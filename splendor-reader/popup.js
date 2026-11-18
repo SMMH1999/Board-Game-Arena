@@ -28,6 +28,11 @@ readButton.addEventListener("click", async () => {
       return;
     }
 
+    if (snapshot.archiveFrameUnavailable) {
+      status.textContent = "مرورگر اجازهٔ خواندن قاب آموزش را نداد. افزونه به دسترسی همین تب محدود است.";
+      return;
+    }
+
     result.textContent = JSON.stringify(snapshot, null, 2);
     result.hidden = false;
     saveButton.disabled = false;
@@ -63,11 +68,10 @@ function readBoard() {
     return null;
   }
 
-  const board = document.getElementById("game_play_area");
   const game = new URLSearchParams(search).get("game");
   const isSplendor = game === "splendor" ||
     /^\/splendor\/?$/i.test(pathname) || /\bsplendor\b/i.test(document.title);
-  if (!board || !isSplendor) return null;
+  if (!isSplendor) return null;
 
   const excluded = "script, style, template, noscript, input, textarea, select, [contenteditable], [hidden], [inert], [aria-hidden='true'], [role='log']";
 
@@ -82,14 +86,25 @@ function readBoard() {
     return Array.from(element.getClientRects()).some(rect => rect.width > 0 && rect.height > 0);
   }
 
-  if (!isDisplayed(board)) return null;
+  let board = document.getElementById("game_play_area");
+  if ((!board || !isDisplayed(board)) && pathname === "/tutorial" && game === "splendor") {
+    const archive = document.querySelector(".bga-archive-frame iframe[title='Archive']");
+    if (archive && isDisplayed(archive)) {
+      const archiveDocument = archive.contentDocument;
+      if (!archiveDocument) return { archiveFrameUnavailable: true };
+      board = archiveDocument.getElementById("game_play_area");
+    }
+  }
+  if (!board || !isDisplayed(board)) return null;
 
-  const walker = document.createTreeWalker(board, NodeFilter.SHOW_TEXT);
+  const boardDocument = board.ownerDocument;
+  const boardWindow = boardDocument.defaultView;
+  const walker = boardDocument.createTreeWalker(board, NodeFilter.SHOW_TEXT);
   const text = [];
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const value = node.textContent.trim();
     if (!value || !isDisplayed(node.parentElement)) continue;
-    const range = document.createRange();
+    const range = boardDocument.createRange();
     range.selectNodeContents(node);
     if (Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0)) {
       text.push(value);
@@ -101,8 +116,8 @@ function readBoard() {
   const graphics = [];
   const boardRect = board.getBoundingClientRect();
   for (const element of board.querySelectorAll("*")) {
-    const style = getComputedStyle(element);
-    const isImage = element instanceof HTMLImageElement;
+    const style = boardWindow.getComputedStyle(element);
+    const isImage = element instanceof boardWindow.HTMLImageElement;
     if (!isImage && style.backgroundImage === "none" && !element.matches("[role='img']")) continue;
     if (!isDisplayed(element)) continue;
 
