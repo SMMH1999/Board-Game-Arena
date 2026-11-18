@@ -1,0 +1,1 @@
+"""Headless Splendor strategy benchmark."""

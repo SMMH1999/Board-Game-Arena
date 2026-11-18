@@ -1,0 +1,131 @@
+{
+  "settings": {
+    "seed": 42,
+    "workers": 3,
+    "max_rounds": 100,
+    "target_score": 15,
+    "colors": [
+      "C",
+      "S",
+      "E",
+      "R",
+      "O",
+      "G"
+    ],
+    "card_set": "benchmark-v1",
+    "source_sha256": {
+      "simulator/__init__.py": "0ea860bb93dd2913044413e7990fe73ed799b4bb3b19a8d5dc7a5a7349a80df9",
+      "simulator/__main__.py": "5ef1c8e8ed20d5fee86c2f10133ed5adc9dc936e4b36bc0a12690b4565023c1a",
+      "simulator/extension_bridge.cjs": "26b0eedb3d3ab9958d4f214846a7ce37aeddd2f24b19cbefac28e899d6327270",
+      "simulator/game.py": "e3296c8697de8ac449db971d8a8f08b3c69b3ae0957ddaff2de9605db753a371",
+      "simulator/scenarios.py": "c3e90d2253e023a24561c9476dc8ac86dd26c8ecb31b5e46f8c4ec7d848bf566",
+      "simulator/strategies.py": "37734fae7e1575b8332f0fd16df94872b9082febdbfc6504f01810e3923a358f",
+      "simulator/tournament.py": "cba8817f60db74bbdb6a4bc187d0136d8a14244cdda45016a0e7f5f366e420f0",
+      "splendor-reader/advice.js": "47ce960038ad235959e646322f093b5a1aaa9001559726cc9e710c2c57222ef4",
+      "splendor-reader/forecast.js": "a78ffe94879abdf7db92a8408daaa38e4c36249ab9467807d5e80aa65bb0cf8d"
+    }
+  },
+  "policies": [
+    "extension",
+    {
+      "name": "engine",
+      "points": 1.25,
+      "economy": 2.35,
+      "noble": 0.75,
+      "reserve": 0.7
+    },
+    {
+      "name": "points",
+      "points": 2.65,
+      "economy": 0.65,
+      "noble": 0.25,
+      "reserve": 1.0
+    },
+    {
+      "name": "nobles",
+      "points": 1.25,
+      "economy": 1.1,
+      "noble": 3.5,
+      "reserve": 0.65
+    }
+  ],
+  "matches": 100,
+  "completed_matches": 100,
+  "unfinished_matches": 0,
+  "tied_matches": 0,
+  "gate": {
+    "minimum_completed_matches": 100,
+    "required_win_rate": 0.75,
+    "required_wins": 75,
+    "win_rate_denominator": 100
+  },
+  "rounds": {
+    "minimum": 19,
+    "maximum": 26,
+    "mean": 23.29
+  },
+  "strategies": {
+    "extension": {
+      "wins": 94,
+      "shared_wins": 0,
+      "win_rate": 0.94,
+      "adapter_fallback_turns": 0,
+      "passed": true,
+      "reasons": [],
+      "seat_counts": [
+        25,
+        25,
+        25,
+        25
+      ]
+    },
+    "engine": {
+      "wins": 2,
+      "shared_wins": 0,
+      "win_rate": 0.02,
+      "adapter_fallback_turns": 0,
+      "passed": false,
+      "reasons": [
+        "win_rate_below_75_percent"
+      ],
+      "seat_counts": [
+        25,
+        25,
+        25,
+        25
+      ]
+    },
+    "points": {
+      "wins": 0,
+      "shared_wins": 0,
+      "win_rate": 0.0,
+      "adapter_fallback_turns": 0,
+      "passed": false,
+      "reasons": [
+        "win_rate_below_75_percent"
+      ],
+      "seat_counts": [
+        25,
+        25,
+        25,
+        25
+      ]
+    },
+    "nobles": {
+      "wins": 4,
+      "shared_wins": 0,
+      "win_rate": 0.04,
+      "adapter_fallback_turns": 0,
+      "passed": false,
+      "reasons": [
+        "win_rate_below_75_percent"
+      ],
+      "seat_counts": [
+        25,
+        25,
+        25,
+        25
+      ]
+    }
+  }
+}

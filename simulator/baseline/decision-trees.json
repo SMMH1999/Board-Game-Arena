@@ -1,0 +1,902 @@
+{
+  "extension": {
+    "decisions": 2329,
+    "decisions_in_sole_wins": 2183,
+    "children": {
+      "opening": {
+        "decisions": 700,
+        "decisions_in_sole_wins": 658,
+        "children": {
+          "extension_take": {
+            "decisions": 518,
+            "decisions_in_sole_wins": 487,
+            "children": {
+              "take": {
+                "decisions": 518,
+                "decisions_in_sole_wins": 487,
+                "children": {}
+              }
+            }
+          },
+          "extension_buy": {
+            "decisions": 178,
+            "decisions_in_sole_wins": 167,
+            "children": {
+              "buy": {
+                "decisions": 178,
+                "decisions_in_sole_wins": 167,
+                "children": {}
+              }
+            }
+          },
+          "extension_reserve": {
+            "decisions": 4,
+            "decisions_in_sole_wins": 4,
+            "children": {
+              "reserve": {
+                "decisions": 4,
+                "decisions_in_sole_wins": 4,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "midgame": {
+        "decisions": 1394,
+        "decisions_in_sole_wins": 1302,
+        "children": {
+          "extension_take": {
+            "decisions": 831,
+            "decisions_in_sole_wins": 775,
+            "children": {
+              "take": {
+                "decisions": 831,
+                "decisions_in_sole_wins": 775,
+                "children": {}
+              }
+            }
+          },
+          "extension_buy": {
+            "decisions": 560,
+            "decisions_in_sole_wins": 524,
+            "children": {
+              "buy": {
+                "decisions": 560,
+                "decisions_in_sole_wins": 524,
+                "children": {}
+              }
+            }
+          },
+          "extension_reserve": {
+            "decisions": 3,
+            "decisions_in_sole_wins": 3,
+            "children": {
+              "reserve": {
+                "decisions": 3,
+                "decisions_in_sole_wins": 3,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "endgame": {
+        "decisions": 232,
+        "decisions_in_sole_wins": 222,
+        "children": {
+          "extension_take": {
+            "decisions": 143,
+            "decisions_in_sole_wins": 135,
+            "children": {
+              "take": {
+                "decisions": 143,
+                "decisions_in_sole_wins": 135,
+                "children": {}
+              }
+            }
+          },
+          "extension_buy": {
+            "decisions": 89,
+            "decisions_in_sole_wins": 87,
+            "children": {
+              "buy": {
+                "decisions": 89,
+                "decisions_in_sole_wins": 87,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "final_round": {
+        "decisions": 3,
+        "decisions_in_sole_wins": 1,
+        "children": {
+          "extension_take": {
+            "decisions": 1,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 1,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "extension_buy": {
+            "decisions": 2,
+            "decisions_in_sole_wins": 1,
+            "children": {
+              "buy": {
+                "decisions": 2,
+                "decisions_in_sole_wins": 1,
+                "children": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "engine": {
+    "decisions": 2329,
+    "decisions_in_sole_wins": 50,
+    "children": {
+      "opening": {
+        "decisions": 700,
+        "decisions_in_sole_wins": 14,
+        "children": {
+          "fund_purchase": {
+            "decisions": 455,
+            "decisions_in_sole_wins": 11,
+            "children": {
+              "take": {
+                "decisions": 455,
+                "decisions_in_sole_wins": 11,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 192,
+            "decisions_in_sole_wins": 2,
+            "children": {
+              "buy": {
+                "decisions": 192,
+                "decisions_in_sole_wins": 2,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 26,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 26,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 27,
+            "decisions_in_sole_wins": 1,
+            "children": {
+              "buy": {
+                "decisions": 27,
+                "decisions_in_sole_wins": 1,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "midgame": {
+        "decisions": 1321,
+        "decisions_in_sole_wins": 31,
+        "children": {
+          "fund_purchase": {
+            "decisions": 361,
+            "decisions_in_sole_wins": 7,
+            "children": {
+              "take": {
+                "decisions": 361,
+                "decisions_in_sole_wins": 7,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 701,
+            "decisions_in_sole_wins": 14,
+            "children": {
+              "buy": {
+                "decisions": 701,
+                "decisions_in_sole_wins": 14,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 175,
+            "decisions_in_sole_wins": 7,
+            "children": {
+              "buy": {
+                "decisions": 175,
+                "decisions_in_sole_wins": 7,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 66,
+            "decisions_in_sole_wins": 1,
+            "children": {
+              "reserve": {
+                "decisions": 66,
+                "decisions_in_sole_wins": 1,
+                "children": {}
+              }
+            }
+          },
+          "claim_noble": {
+            "decisions": 18,
+            "decisions_in_sole_wins": 2,
+            "children": {
+              "buy": {
+                "decisions": 18,
+                "decisions_in_sole_wins": 2,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "final_round": {
+        "decisions": 71,
+        "decisions_in_sole_wins": 0,
+        "children": {
+          "claim_noble": {
+            "decisions": 16,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 15,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              },
+              "take": {
+                "decisions": 1,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "fund_purchase": {
+            "decisions": 10,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 10,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 25,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 25,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "reach_victory_threshold": {
+            "decisions": 1,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 1,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 14,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 14,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 5,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 5,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "endgame": {
+        "decisions": 237,
+        "decisions_in_sole_wins": 5,
+        "children": {
+          "build_discounts": {
+            "decisions": 83,
+            "decisions_in_sole_wins": 1,
+            "children": {
+              "buy": {
+                "decisions": 83,
+                "decisions_in_sole_wins": 1,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 72,
+            "decisions_in_sole_wins": 1,
+            "children": {
+              "buy": {
+                "decisions": 72,
+                "decisions_in_sole_wins": 1,
+                "children": {}
+              }
+            }
+          },
+          "fund_purchase": {
+            "decisions": 36,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 36,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "claim_noble": {
+            "decisions": 32,
+            "decisions_in_sole_wins": 1,
+            "children": {
+              "buy": {
+                "decisions": 32,
+                "decisions_in_sole_wins": 1,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 12,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 12,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "reach_victory_threshold": {
+            "decisions": 2,
+            "decisions_in_sole_wins": 2,
+            "children": {
+              "buy": {
+                "decisions": 2,
+                "decisions_in_sole_wins": 2,
+                "children": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "points": {
+    "decisions": 2329,
+    "decisions_in_sole_wins": 0,
+    "children": {
+      "opening": {
+        "decisions": 700,
+        "decisions_in_sole_wins": 0,
+        "children": {
+          "secure_target": {
+            "decisions": 168,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 168,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "fund_purchase": {
+            "decisions": 354,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 354,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 60,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 60,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 118,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 118,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "midgame": {
+        "decisions": 1346,
+        "decisions_in_sole_wins": 0,
+        "children": {
+          "score_prestige": {
+            "decisions": 330,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 330,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 385,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 385,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "fund_purchase": {
+            "decisions": 525,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 525,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 102,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 102,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "claim_noble": {
+            "decisions": 4,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 4,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "final_round": {
+        "decisions": 48,
+        "decisions_in_sole_wins": 0,
+        "children": {
+          "fund_purchase": {
+            "decisions": 23,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 23,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 19,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 19,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 1,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 1,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 3,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 3,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "claim_noble": {
+            "decisions": 2,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 2,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "endgame": {
+        "decisions": 235,
+        "decisions_in_sole_wins": 0,
+        "children": {
+          "score_prestige": {
+            "decisions": 94,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 94,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "fund_purchase": {
+            "decisions": 84,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 84,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 44,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 44,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 9,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 9,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "claim_noble": {
+            "decisions": 4,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 4,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "nobles": {
+    "decisions": 2329,
+    "decisions_in_sole_wins": 96,
+    "children": {
+      "opening": {
+        "decisions": 700,
+        "decisions_in_sole_wins": 28,
+        "children": {
+          "fund_purchase": {
+            "decisions": 470,
+            "decisions_in_sole_wins": 20,
+            "children": {
+              "take": {
+                "decisions": 470,
+                "decisions_in_sole_wins": 20,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 198,
+            "decisions_in_sole_wins": 8,
+            "children": {
+              "buy": {
+                "decisions": 198,
+                "decisions_in_sole_wins": 8,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 10,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 10,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 22,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 22,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "midgame": {
+        "decisions": 1371,
+        "decisions_in_sole_wins": 59,
+        "children": {
+          "build_discounts": {
+            "decisions": 709,
+            "decisions_in_sole_wins": 36,
+            "children": {
+              "buy": {
+                "decisions": 709,
+                "decisions_in_sole_wins": 36,
+                "children": {}
+              }
+            }
+          },
+          "fund_purchase": {
+            "decisions": 356,
+            "decisions_in_sole_wins": 10,
+            "children": {
+              "take": {
+                "decisions": 356,
+                "decisions_in_sole_wins": 10,
+                "children": {}
+              }
+            }
+          },
+          "claim_noble": {
+            "decisions": 40,
+            "decisions_in_sole_wins": 5,
+            "children": {
+              "buy": {
+                "decisions": 40,
+                "decisions_in_sole_wins": 5,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 187,
+            "decisions_in_sole_wins": 5,
+            "children": {
+              "buy": {
+                "decisions": 187,
+                "decisions_in_sole_wins": 5,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 79,
+            "decisions_in_sole_wins": 3,
+            "children": {
+              "reserve": {
+                "decisions": 79,
+                "decisions_in_sole_wins": 3,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "final_round": {
+        "decisions": 23,
+        "decisions_in_sole_wins": 0,
+        "children": {
+          "fund_purchase": {
+            "decisions": 1,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 1,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 8,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 8,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 4,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 4,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "claim_noble": {
+            "decisions": 6,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "reserve": {
+                "decisions": 1,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              },
+              "buy": {
+                "decisions": 5,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 4,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 4,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          }
+        }
+      },
+      "endgame": {
+        "decisions": 235,
+        "decisions_in_sole_wins": 9,
+        "children": {
+          "fund_purchase": {
+            "decisions": 16,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "take": {
+                "decisions": 16,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "score_prestige": {
+            "decisions": 65,
+            "decisions_in_sole_wins": 0,
+            "children": {
+              "buy": {
+                "decisions": 65,
+                "decisions_in_sole_wins": 0,
+                "children": {}
+              }
+            }
+          },
+          "build_discounts": {
+            "decisions": 57,
+            "decisions_in_sole_wins": 1,
+            "children": {
+              "buy": {
+                "decisions": 57,
+                "decisions_in_sole_wins": 1,
+                "children": {}
+              }
+            }
+          },
+          "secure_target": {
+            "decisions": 39,
+            "decisions_in_sole_wins": 1,
+            "children": {
+              "reserve": {
+                "decisions": 39,
+                "decisions_in_sole_wins": 1,
+                "children": {}
+              }
+            }
+          },
+          "claim_noble": {
+            "decisions": 53,
+            "decisions_in_sole_wins": 3,
+            "children": {
+              "buy": {
+                "decisions": 53,
+                "decisions_in_sole_wins": 3,
+                "children": {}
+              }
+            }
+          },
+          "reach_victory_threshold": {
+            "decisions": 5,
+            "decisions_in_sole_wins": 4,
+            "children": {
+              "buy": {
+                "decisions": 5,
+                "decisions_in_sole_wins": 4,
+                "children": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

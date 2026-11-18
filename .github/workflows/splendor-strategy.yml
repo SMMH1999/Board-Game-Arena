@@ -1,0 +1,40 @@
+name: Splendor strategy benchmark
+
+on:
+  push:
+    branches: [simulator]
+  pull_request:
+    branches: [main]
+    paths:
+      - "simulator/**"
+      - "splendor-reader/advice.js"
+      - "splendor-reader/forecast.js"
+      - ".github/workflows/splendor-strategy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  strategy-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Verify simulator rules and gate
+        run: python -m unittest discover -s simulator/tests -v
+      - name: Require the browser strategy to pass 100 matches
+        run: python -m simulator --games 100 --workers 2 --seed 42 --require-pass extension
+      - name: Upload match reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: splendor-strategy-report
+          path: simulator/reports/latest/
+          if-no-files-found: ignore
