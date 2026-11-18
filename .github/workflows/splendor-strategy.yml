@@ -17,14 +17,16 @@ permissions:
 
 jobs:
   strategy-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
       - name: Verify simulator rules and gate
@@ -33,7 +35,7 @@ jobs:
         run: python -m simulator --games 100 --workers 2 --seed 42 --require-pass extension
       - name: Upload match reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: splendor-strategy-report
           path: simulator/reports/latest/
