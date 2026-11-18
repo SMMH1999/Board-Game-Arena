@@ -32,7 +32,7 @@ globalThis.createSplendorGuide = () => {
     }
 
     const { advice } = plan;
-    const primary = advice.buy ? "buy" : advice.take ? "take" : "reserve";
+    const primary = advice.primary;
     const picked = color => {
       const current = snapshot.counters.find(item => item.elementId === `coincounter_${color}`)?.text;
       return /^\d+$/.test(current ?? "") ? Math.max(0, advice.bank[color] - Number(current)) : 0;
@@ -109,7 +109,8 @@ globalThis.createSplendorGuide = () => {
       return `سطح ${card.parentId.at(-1)}، کارت ${position} از چپ`;
     }
     const cardItem = id => ({ id, label: cardLabel(id), done: snapshot.selectedCardIds.includes(id) });
-    if (advice.buy) addRow("buy", advice.buy.reserved ? "خرید کارت رزروشده" : "خرید", [cardItem(advice.buy.id)]);
+    if (advice.buy) addRow("buy", (advice.buy.reserved ? "خرید کارت رزروشده" : "خرید") +
+      (advice.buy.earnsNoble ? " · جذب نوبل" : ""), [cardItem(advice.buy.id)]);
     if (advice.reservedBuy && advice.reservedBuy.id !== advice.buy?.id) {
       addRow("reserved-buy", "خرید از رزرو · گزینهٔ دیگر", [cardItem(advice.reservedBuy.id)]);
     }
