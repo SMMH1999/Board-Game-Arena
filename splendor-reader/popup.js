@@ -1,7 +1,22 @@
 const readButton = document.querySelector("#read");
+const stopButton = document.querySelector("#stop");
 const saveButton = document.querySelector("#save");
 const status = document.querySelector("#status");
 const result = document.querySelector("#result");
+
+(async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url || !isBoardGameArena(tab.url)) return;
+    const [{ result: installed }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => Boolean(globalThis.__splendorTableReader?.("active"))
+    });
+    if (installed) stopButton.disabled = false;
+  } catch {
+    // The active tab may have changed while the popup was opening.
+  }
+})();
 
 readButton.addEventListener("click", async () => {
   readButton.disabled = true;
@@ -17,30 +32,53 @@ readButton.addEventListener("click", async () => {
       return;
     }
 
-    const [{ result: snapshot }] = await chrome.scripting.executeScript({
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["reader.js"]
+    });
+    const [{ result: session }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       world: "ISOLATED",
-      func: readBoard
+      func: () => globalThis.__splendorTableReader("read")
     });
 
-    if (!snapshot) {
+    if (!session) {
       status.textContent = "میز اسپلندور پیدا نشد. خود میز بازی یا بازپخش را باز کن و پس از بارگذاری دوباره امتحان کن.";
       return;
     }
 
-    if (snapshot.archiveFrameUnavailable) {
+    if (session.archiveFrameUnavailable) {
       status.textContent = "مرورگر اجازهٔ خواندن قاب آموزش را نداد. افزونه به دسترسی همین تب محدود است.";
       return;
     }
 
-    result.textContent = JSON.stringify(snapshot, null, 2);
+    const changes = summarizeChanges(session.history);
+    result.textContent = JSON.stringify({ ...session, changes }, null, 2);
     result.hidden = false;
     saveButton.disabled = false;
-    status.textContent = "نمای فعلی میز خوانده شد.";
+    readButton.textContent = "خواندن مجدد میز";
+    stopButton.disabled = false;
+    status.textContent = `ثبت فعال است · ${session.history.length} وضعیت ثبت‌شده. دادهٔ کافی برای پیشنهاد حرکت معتبر در دسترس نیست.`;
   } catch {
     status.textContent = "مرورگر نتوانست این تب را بخواند. میز را در تب عادی Chrome باز کن و دوباره امتحان کن.";
   } finally {
     readButton.disabled = false;
+  }
+});
+
+stopButton.addEventListener("click", async () => {
+  stopButton.disabled = true;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => { globalThis.__splendorTableReader?.("stop"); }
+    });
+    readButton.textContent = "خواندن میز";
+    status.textContent = "ثبت متوقف شد.";
+  } catch {
+    stopButton.disabled = false;
+    status.textContent = "توقف ثبت از این پنجره ممکن نبود.";
   }
 });
 
@@ -60,84 +98,25 @@ function isBoardGameArena(address) {
     (url.hostname === "boardgamearena.com" || url.hostname.endsWith(".boardgamearena.com"));
 }
 
-// This function is serialized and executed in the tab's isolated world.
-function readBoard() {
-  const { protocol, hostname, pathname, search } = location;
-  if (protocol !== "https:" ||
-      (hostname !== "boardgamearena.com" && !hostname.endsWith(".boardgamearena.com"))) {
-    return null;
-  }
-
-  const game = new URLSearchParams(search).get("game");
-  const isSplendor = game === "splendor" ||
-    /^\/splendor\/?$/i.test(pathname) || /\bsplendor\b/i.test(document.title);
-  if (!isSplendor) return null;
-
-  const excluded = "script, style, template, noscript, input, textarea, select, [contenteditable], [hidden], [inert], [aria-hidden='true'], [role='log']";
-
-  function isDisplayed(element) {
-    if (element.closest(excluded) || !element.checkVisibility({
-      opacityProperty: true,
-      visibilityProperty: true,
-      contentVisibilityAuto: true
-    })) {
-      return false;
+function summarizeChanges(history) {
+  return history.slice(1).map((after, index) => {
+    const before = history[index];
+    const countTexts = (snapshot) => {
+      const counts = new Map();
+      for (const value of snapshot.text) counts.set(value, (counts.get(value) ?? 0) + 1);
+      return counts;
+    };
+    const oldTexts = countTexts(before);
+    const newTexts = countTexts(after);
+    const textChanges = [];
+    for (const value of new Set([...oldTexts.keys(), ...newTexts.keys()])) {
+      const delta = (newTexts.get(value) ?? 0) - (oldTexts.get(value) ?? 0);
+      if (delta) textChanges.push({ value, delta });
     }
-    return Array.from(element.getClientRects()).some(rect => rect.width > 0 && rect.height > 0);
-  }
-
-  let board = document.getElementById("game_play_area");
-  if ((!board || !isDisplayed(board)) && pathname === "/tutorial" && game === "splendor") {
-    const archive = document.querySelector(".bga-archive-frame iframe[title='Archive']");
-    if (archive && isDisplayed(archive)) {
-      const archiveDocument = archive.contentDocument;
-      if (!archiveDocument) return { archiveFrameUnavailable: true };
-      board = archiveDocument.getElementById("game_play_area");
-    }
-  }
-  if (!board || !isDisplayed(board)) return null;
-
-  const boardDocument = board.ownerDocument;
-  const boardWindow = boardDocument.defaultView;
-  const walker = boardDocument.createTreeWalker(board, NodeFilter.SHOW_TEXT);
-  const text = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const value = node.textContent.trim();
-    if (!value || !isDisplayed(node.parentElement)) continue;
-    const range = boardDocument.createRange();
-    range.selectNodeContents(node);
-    if (Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0)) {
-      text.push(value);
-    }
-  }
-
-  // Image labels and layout help identify board pieces rendered as graphics.
-  // Keep only numeric sprite offsets, with no image URLs or HTML.
-  const graphics = [];
-  const boardRect = board.getBoundingClientRect();
-  for (const element of board.querySelectorAll("*")) {
-    const style = boardWindow.getComputedStyle(element);
-    const isImage = element instanceof boardWindow.HTMLImageElement;
-    if (!isImage && style.backgroundImage === "none" && !element.matches("[role='img']")) continue;
-    if (!isDisplayed(element)) continue;
-
-    const rect = element.getBoundingClientRect();
-    graphics.push({
-      label: element.getAttribute("aria-label") || (isImage ? element.alt : "") ||
-        element.getAttribute("title") || null,
-      x: Math.round(rect.left - boardRect.left),
-      y: Math.round(rect.top - boardRect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-      backgroundPosition: style.backgroundImage === "none" ? null : style.backgroundPosition
-    });
-  }
-
-  return {
-    schemaVersion: 1,
-    game: "splendor",
-    capturedAt: new Date().toISOString(),
-    text,
-    graphics
-  };
+    return {
+      capturedAt: after.capturedAt,
+      textChanges,
+      graphicCountDelta: after.graphics.length - before.graphics.length
+    };
+  });
 }
