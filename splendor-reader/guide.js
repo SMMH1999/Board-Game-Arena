@@ -2,6 +2,7 @@ globalThis.createSplendorGuide = () => {
   const colors = { C: "سفید", S: "آبی", E: "سبز", R: "قرمز", O: "سیاه", G: "طلا" };
   let plan;
   let preferredTarget;
+  let previousBuy;
   let layer;
   const halos = new Map();
 
@@ -12,7 +13,7 @@ globalThis.createSplendorGuide = () => {
     halos.clear();
   }
 
-  function render(snapshot, doc, message) {
+  function render(snapshot, doc, message, recordDecision) {
     const prompt = snapshot.turnText ?? "";
     if (/^pay\b.*\bto buy\b/i.test(prompt)) {
       reset();
@@ -29,9 +30,24 @@ globalThis.createSplendorGuide = () => {
         (!pending && plan?.hadPending && /^you must play/i.test(prompt))) reset();
     if (opponent || /(?:game (?:is )?over|game has ended)/i.test(prompt) || (!ours && !plan)) return false;
     if (!plan && !pending) {
-      const advice = splendorAdvice(snapshot, preferredTarget);
+      const deferredBuy = previousBuy && previousBuy.move !== snapshot.move ? previousBuy.id : null;
+      const advice = splendorAdvice(snapshot, preferredTarget, deferredBuy);
+      if (advice?.incomplete) {
+        message.textContent = advice.incomplete === "market"
+          ? "بازار هنوز کامل خوانده نشده است؛ پیشنهاد پس از تکمیل نمایش داده می‌شود."
+          : "اطلاعات ژتون‌ها، تخفیف‌ها یا امتیاز هنوز برای پیشنهاد کافی نیست.";
+        recordDecision?.(snapshot, advice);
+        return true;
+      }
       if (advice?.paths.length) preferredTarget = advice.paths[0].id;
-      if (advice) plan = { advice, snapshot, previews: new Map() };
+      if (advice) {
+        plan = { advice, snapshot, previews: new Map() };
+        if (previousBuy?.move !== snapshot.move) {
+          previousBuy = advice.primary !== "buy" && advice.buy
+            ? { move: snapshot.move, id: advice.buy.id } : null;
+        }
+        recordDecision?.(snapshot, advice);
+      }
     }
     if (!plan) {
       message.textContent = "پس از پایان انتخاب جاری، پیشنهاد نوبت بعدی نمایش داده می‌شود.";
@@ -142,6 +158,7 @@ globalThis.createSplendorGuide = () => {
         details.push(`هدف امتیازی: ${advice.race.target}`);
         if (advice.race.nobleColors?.length) details.push(`تخفیف‌های نوبل: ${advice.race.nobleColors.map(color => colors[color]).join("، ")}`);
         if (advice.race.finishing) details.push(`امتیاز پس از خرید: ${advice.race.ownNextScore}`);
+        if (advice.race.hiddenThreat?.length) details.push("رزرو پنهان حریف می‌تواند پایان را جلو بیندازد");
         if (advice.race.rivalThreat >= 15) details.push(`تهدید قابل‌مشاهدهٔ حریف: ${advice.race.rivalThreat}`);
       }
       if (paths[0]) details.push(`هدف خرید: ${cardLabel(paths[0].id)}`);
@@ -259,5 +276,5 @@ globalThis.createSplendorGuide = () => {
     return art.childElementCount ? preview : null;
   }
 
-  return { render, reset, clearTarget: () => { preferredTarget = null; } };
+  return { render, reset, clearTarget: () => { preferredTarget = null; previousBuy = null; } };
 };

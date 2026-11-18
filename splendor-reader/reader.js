@@ -169,7 +169,7 @@
     overlay.archiveStatus.textContent = saveStatus === "folder-required"
       ? "ذخیره متوقف است. از پنجرهٔ افزونه، محل ذخیره را تنظیم کن."
       : saveStatus && saveStatus !== "saved" ? "آخرین ذخیره موفق نبود." : "";
-    if (guide.render(snapshot, boardDocument, overlay.message)) return;
+    if (guide.render(snapshot, boardDocument, overlay.message, archive.recordDecision)) return;
 
     if (!snapshot.activePlayerId && snapshot.activePlayerName) {
       overlay.message.textContent = `نوبت ${snapshot.activePlayerName} است؛ شناسهٔ بازیکن هنوز مشخص نیست.`;

@@ -24,7 +24,13 @@ globalThis.readSplendorBoardData = (board, players, localPlayerId, isDisplayed) 
   const observedPlayers = players.map(player => {
     const tokens = {}, discounts = {};
     for (const color of colors) [tokens[color], discounts[color]] = resources(player, color);
-    return { ...player, tokens, discounts };
+    const hand = doc.getElementById(`spl_hand_${player.id}`);
+    const reserveCounter = board.querySelector("#spl_playerreserve_count");
+    const ownReserveCount = /^[0-3]\/3$/.test(reserveCounter?.innerText.trim() ?? "")
+      ? Number(reserveCounter.innerText.trim()[0]) : null;
+    const reservedCount = player.id === localPlayerId ? ownReserveCount : hand
+      ? Array.from(hand.querySelectorAll(".spl_card.spl_hidden")).filter(isDisplayed).length : null;
+    return { ...player, tokens, discounts, reservedCount };
   });
 
   const readCosts = (element, selector) => {
@@ -69,7 +75,11 @@ globalThis.readSplendorBoardData = (board, players, localPlayerId, isDisplayed) 
       if (!actor || !action || !/^\d+$/.test(entry.dataset.moveId)) return [];
       const icons = Array.from(entry.querySelectorAll(".spl_log_coin, .spl_log_gem")).flatMap(icon => {
         const color = /\bicon_([CSEROG])\b/.exec(icon.className)?.[1];
-        return color ? [{ kind: icon.matches(".spl_log_coin") ? "token" : "card", color }] : [];
+        if (!color) return [];
+        if (icon.matches(".spl_log_coin")) return [{ kind: "token", color }];
+        // Card log icons use the gem sheet, whose color order differs from the token sheet.
+        const bonus = { E: "C", C: "S", R: "E", O: "R", S: "O" }[color];
+        return bonus ? [{ kind: "card", color: bonus }] : [];
       });
       return [{ id: entry.id, move: Number(entry.dataset.moveId), playerId: actor.id, action, icons,
         ...(action === "claims" ? { detail: text.slice(actorName.length).trim() } : {}),

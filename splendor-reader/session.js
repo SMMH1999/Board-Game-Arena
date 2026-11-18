@@ -2,6 +2,8 @@ globalThis.createSplendorArchive = (session) => {
   const timeline = [];
   const actions = new Map();
   const cards = new Map();
+  const decisions = new Map();
+  let localPlayerId;
   let lastState;
   let lastFingerprint;
   let revision = 0;
@@ -12,6 +14,7 @@ globalThis.createSplendorArchive = (session) => {
   let status = null;
 
   function observe(snapshot) {
+    localPlayerId ??= snapshot.localPlayerId;
     const game = snapshot.gameState;
     if (!game) return;
     for (const event of game.events) {
@@ -30,10 +33,11 @@ globalThis.createSplendorArchive = (session) => {
       }
     }
     const counters = Object.fromEntries(snapshot.counters.filter(item =>
-      /^(?:coincounter_[CSEROG]|drawpile_counter_[123]|spl_playerreserve_count)$/.test(item.elementId ?? "")
+      /^(?:coincounter_[CSEROG]|drawpile_counter_[123]|spl_playerreserve_count|spl_playerboard_gemcount)$/.test(item.elementId ?? "")
     ).map(item => [item.elementId, item.text]));
     const state = {
       move: snapshot.move, activePlayerId: snapshot.activePlayerId, finished,
+      roundOrder: snapshot.roundOrder ?? null,
       counters,
       market: game.cards.filter(card => !card.reserved).map(card => card.id).sort(),
       reserved: game.cards.filter(card => card.reserved).map(card => card.id).sort(),
@@ -49,6 +53,23 @@ globalThis.createSplendorArchive = (session) => {
     revision++;
   }
 
+  function recordDecision(snapshot, advice) {
+    if (snapshot.move == null) return;
+    const choice = advice[advice.primary];
+    const decision = {
+      move: snapshot.move, primary: advice.primary, incomplete: advice.incomplete ?? null,
+      selection: choice ? choice.tokens ? { tokens: choice.tokens, returned: choice.returned } : { cardId: choice.id } : null,
+      scores: Object.fromEntries(["buy", "take", "reserve"].map(kind => [kind, advice[kind]?.score ?? null])),
+      targets: advice.paths.map(path => path.id),
+      threat: advice.race ? { visible: advice.race.rivalThreat, hidden: advice.race.hiddenThreat ?? [],
+        orderKnown: advice.race.orderKnown } : null
+    };
+    const prior = decisions.get(snapshot.move);
+    if ((prior?.primary && decision.incomplete) || JSON.stringify(prior) === JSON.stringify(decision)) return;
+    decisions.set(snapshot.move, decision);
+    revision++;
+  }
+
   function flush(force = false) {
     if (pending) {
       forceAfterPending ||= force;
@@ -58,7 +79,7 @@ globalThis.createSplendorArchive = (session) => {
     lastAttempt = Date.now();
     const writingRevision = revision;
     const data = {
-      schemaVersion: 3, session, timeline, cards: Object.fromEntries(cards),
+      schemaVersion: 4, session, localPlayerId, timeline, decisions: [...decisions.values()], cards: Object.fromEntries(cards),
       actions: [...actions.values()].sort((a, b) => a.move - b.move ||
         a.id.localeCompare(b.id, undefined, { numeric: true })),
       result: lastState ? {
@@ -81,5 +102,5 @@ globalThis.createSplendorArchive = (session) => {
     return pending;
   }
 
-  return { observe, flush, status: () => status };
+  return { observe, recordDecision, flush, status: () => status };
 };

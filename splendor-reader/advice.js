@@ -1,5 +1,5 @@
-globalThis.splendorAdvice = (snapshot, preferredTarget = null) => {
-  if (snapshot.gameState) return splendorRaceAdvice(snapshot, preferredTarget);
+globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = null) => {
+  if (snapshot.gameState) return splendorRaceAdvice(snapshot, preferredTarget, deferredBuy);
   const { graphics, counters, localPlayerId } = snapshot;
   const colors = ["C", "S", "E", "R", "O"];
   const spriteNumber = (graphic) => {
