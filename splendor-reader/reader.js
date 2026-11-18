@@ -45,6 +45,7 @@
     const snapshot = capture();
     if (!snapshot || snapshot.archiveFrameUnavailable) return snapshot;
     timer ??= setInterval(capture, 750);
+    if (snapshot.tableLoading) return snapshot;
     return { snapshot, history: history.slice(), events: journal.export() };
   };
 
@@ -60,7 +61,7 @@
       return null;
     }
     const snapshot = readBoard();
-    if (!snapshot || snapshot.archiveFrameUnavailable) {
+    if (!snapshot || snapshot.archiveFrameUnavailable || snapshot.tableLoading) {
       guide.reset();
       if (overlay) overlay.message.textContent = "میز در دسترس نیست.";
       previousSignature = undefined;
@@ -155,17 +156,6 @@
   }
 
   function readBoard() {
-    const { protocol, hostname, pathname, search } = location;
-    if (protocol !== "https:" ||
-        (hostname !== "boardgamearena.com" && !hostname.endsWith(".boardgamearena.com"))) {
-      return null;
-    }
-
-    const game = new URLSearchParams(search).get("game");
-    const isSplendor = game === "splendor" ||
-      /^\/splendor\/?$/i.test(pathname) || /\bsplendor\b/i.test(document.title);
-    if (!isSplendor) return null;
-
     const excluded = "script, style, template, noscript, input, textarea, select, [contenteditable], [hidden], [inert], [aria-hidden='true'], [role='log']";
 
     function isDisplayed(element) {
@@ -179,17 +169,9 @@
       return Array.from(element.getClientRects()).some(rect => rect.width > 0 && rect.height > 0);
     }
 
-    let board = document.getElementById("game_play_area");
-    if ((!board || !isDisplayed(board)) && pathname === "/tutorial" && game === "splendor") {
-      const archive = document.querySelector(".bga-archive-frame iframe[title='Archive']");
-      if (archive && isDisplayed(archive)) {
-        const archiveDocument = archive.contentDocument;
-        if (!archiveDocument) return { archiveFrameUnavailable: true };
-        board = archiveDocument.getElementById("game_play_area");
-      }
-    }
-    if (!board || !isDisplayed(board)) return null;
-
+    const table = findSplendorTable(document, location.href, isDisplayed);
+    if (!table?.board) return table;
+    const { board } = table;
     boardDocument = board.ownerDocument;
     const boardWindow = boardDocument.defaultView;
     const walker = boardDocument.createTreeWalker(board, NodeFilter.SHOW_TEXT);

@@ -39,7 +39,7 @@ async function readTable() {
 
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["journal.js", "advice.js", "turn.js", "guide.js", "panel.js", "session.js", "reader.js"]
+      files: ["journal.js", "advice.js", "turn.js", "guide.js", "panel.js", "session.js", "table.js", "reader.js"]
     });
     const [{ result: session }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -52,8 +52,13 @@ async function readTable() {
       return;
     }
 
+    if (session.tableLoading) {
+      status.textContent = "در انتظار بارگذاری میز. راهنما با ظاهر شدن میز باز می‌شود.";
+      stopButton.disabled = false;
+      return;
+    }
     if (session.archiveFrameUnavailable) {
-      status.textContent = "مرورگر اجازهٔ خواندن قاب آموزش را نداد. افزونه به دسترسی همین تب محدود است.";
+      status.textContent = "مرورگر اجازهٔ خواندن قاب بازی را نداد. افزونه به دسترسی همین تب محدود است.";
       return;
     }
 
