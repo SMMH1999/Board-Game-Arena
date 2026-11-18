@@ -104,13 +104,25 @@
       return;
     }
     const suggestion = splendorAdvice(snapshot);
-    const suggestedCard = snapshot.graphics.find(item => item.elementId === suggestion?.id);
-    const position = suggestedCard ? snapshot.graphics.filter(item =>
-      item.parentId === suggestedCard.parentId && /^card_\d+$/.test(item.elementId ?? "") &&
-      item.x < suggestedCard.x).length + 1 : null;
-    overlay.message.textContent = suggestion
-      ? `پیشنهاد خرید: ردیف سطح ${suggestedCard.parentId.at(-1)}، کارت ${position} از چپ · هزینه: ${suggestion.payment} ژتون`
-      : "خرید قابل‌تأییدی برای پیشنهاد پیدا نشد.";
+    function cardPosition(id) {
+      const card = snapshot.graphics.find(item => item.elementId === id);
+      const position = snapshot.graphics.filter(item =>
+        item.parentId === card.parentId && /^card_\d+$/.test(item.elementId ?? "") &&
+        item.x < card.x).length + 1;
+      return `سطح ${card.parentId.at(-1)}، کارت ${position} از چپ`;
+    }
+    const names = { C: "سفید", S: "آبی", E: "سبز", R: "قرمز", O: "سیاه" };
+    const options = [];
+    if (suggestion?.buy) options.push(`خرید: ${cardPosition(suggestion.buy.id)} · ${suggestion.buy.payment} ژتون`);
+    if (suggestion?.take) options.push(`برداشتن: ${suggestion.take.tokens.map(color => names[color]).join("، ")}`);
+    if (suggestion?.reserve) {
+      options.push(`رزرو: ${cardPosition(suggestion.reserve.id)}${suggestion.reserve.gold ? " + یک طلا" : ""}`);
+    }
+    overlay.message.style.whiteSpace = "pre-line";
+    overlay.message.textContent = options.length
+      ? `پیشنهاد اول: ${options[0]}
+${options.slice(1).join("\n")}`.trim()
+      : "حرکت قابل‌تأییدی از وضعیت فعلی پیدا نشد.";
   }
 
   function readBoard() {
@@ -199,6 +211,18 @@
     const itemIds = new Set(graphics.map(item => /^player_items_(\d+)_[CSERO]$/.exec(item.parentId ?? "")?.[1]).filter(Boolean));
     const localPlayerId = itemIds.size === 1 ? [...itemIds][0] : null;
     const turn = readSplendorTurn(boardDocument, isDisplayed, localPlayerId);
+    const gameLog = Array.from(boardDocument.querySelectorAll("#logs .log, #logs [id^='log_']"))
+      .filter(entry => isDisplayed(entry) && !entry.querySelector(".log, [id^='log_']"))
+      .slice(0, 50)
+      .map(entry => ({
+        id: entry.id || null,
+        text: entry.innerText.trim(),
+        icons: Array.from(entry.querySelectorAll("img, [title], [aria-label]"))
+          .filter(isDisplayed)
+          .map(icon => icon.getAttribute("aria-label") || icon.getAttribute("title") || icon.getAttribute("alt"))
+          .filter(Boolean)
+      }))
+      .filter(entry => entry.text || entry.icons.length);
 
     return {
       schemaVersion: 3,
@@ -208,6 +232,7 @@
       capturedAt: new Date().toISOString(),
       text,
       counters,
+      gameLog,
       graphics
     };
   }

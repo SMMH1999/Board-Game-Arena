@@ -64,7 +64,7 @@ globalThis.createSplendorJournal = () => {
   }
 
   function recordChanges(entry, snapshot) {
-    const fields = ["text", "counters", "graphics", "players"];
+    const fields = ["text", "counters", "graphics", "players", "gameLog"];
     const changes = {};
     for (const field of fields) {
       if (JSON.stringify(entry.after[field]) !== JSON.stringify(snapshot[field])) {
