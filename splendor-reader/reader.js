@@ -22,7 +22,7 @@
     if (command === "stop") {
       clearInterval(timer);
       timer = undefined;
-      archive?.flush();
+      archive?.flush(true);
       overlay?.dispose();
       overlay?.host.remove();
       overlay = undefined;
@@ -34,7 +34,7 @@
       clearInterval(timer);
       timer = undefined;
       guide.reset();
-      archive?.flush();
+      archive?.flush(true);
       tableUrl = location.href;
       archive = createSplendorArchive(new Date().toISOString().replace(/[^0-9]/g, "") + "-" + crypto.randomUUID());
       history = [];
@@ -52,7 +52,7 @@
     if (location.href !== tableUrl) {
       clearInterval(timer);
       timer = undefined;
-      archive?.flush();
+      archive?.flush(true);
       overlay?.dispose();
       overlay?.host.remove();
       overlay = undefined;
@@ -71,13 +71,11 @@
     if (signature !== previousSignature) {
       journal.observe(snapshot);
       archive.observe(snapshot);
-      if (!history.length || archive.size() >= 12 || snapshot.activePlayerId !== history.at(-1)?.activePlayerId ||
-          /game (?:is )?over|game has ended|end of (?:the )?game/i.test(snapshot.turnText)) archive.flush();
       history.push(snapshot);
       if (history.length > 150) history.shift();
       previousSignature = signature;
     }
-    if (archive.size() && Date.now() - Date.parse(history.at(-1).capturedAt) >= 10000) archive.flush();
+    archive.flush();
     renderOverlay(snapshot);
     return snapshot;
   }
@@ -127,12 +125,17 @@
       grip.type = "button";
       grip.className = "grip";
       grip.textContent = "تغییر اندازه ↘";
-      panel.append(header, message, grip);
+      const archiveStatus = document.createElement("small");
+      panel.append(header, message, archiveStatus, grip);
       shadow.append(styles, panel);
       document.body.append(host);
-      overlay = { host, message, dispose: manageSplendorPanel(host, panel, header, grip) };
+      overlay = { host, message, archiveStatus, dispose: manageSplendorPanel(host, panel, header, grip) };
     }
 
+    const saveStatus = archive.status();
+    overlay.archiveStatus.textContent = saveStatus === "folder-required"
+      ? "ذخیره متوقف است. از پنجرهٔ افزونه، محل ذخیره را تنظیم کن."
+      : saveStatus && saveStatus !== "saved" ? "آخرین ذخیره موفق نبود." : "";
     if (guide.render(snapshot, boardDocument, overlay.message)) return;
 
     if (!snapshot.activePlayerId && snapshot.activePlayerName) {
