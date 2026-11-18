@@ -89,12 +89,18 @@
       overlay = { host, message };
     }
 
-    if (!snapshot.activePlayerId || !snapshot.localPlayerId) {
+    if (!snapshot.activePlayerId && snapshot.activePlayerName) {
+      overlay.message.textContent = `نوبت ${snapshot.activePlayerName} است؛ شناسهٔ بازیکن هنوز مشخص نیست.`;
+      return;
+    }
+    if (!snapshot.activePlayerId) {
       overlay.message.textContent = "ثبت فعال است؛ بازیکن صاحب نوبت هنوز مشخص نیست.";
       return;
     }
-    if (snapshot.activePlayerId !== snapshot.localPlayerId) {
-      overlay.message.textContent = "ثبت فعال است؛ منتظر نوبت شما.";
+    if (!snapshot.localPlayerId || snapshot.activePlayerId !== snapshot.localPlayerId) {
+      overlay.message.textContent = snapshot.activePlayerName
+        ? `نوبت ${snapshot.activePlayerName} است.`
+        : "ثبت فعال است؛ منتظر تشخیص نوبت شما.";
       return;
     }
     const suggestion = splendorAdvice(snapshot);
@@ -190,37 +196,14 @@
       });
     }
 
-    const panels = Array.from(boardDocument.querySelectorAll("#player_boards [id^='player_board_']"))
-      .filter(panel => /^player_board_\d+$/.test(panel.id) && isDisplayed(panel));
-    const players = panels.map(panel => {
-      const score = panel.querySelector("[id^='player_score_']");
-      const scoreText = score && isDisplayed(score) ? score.innerText.trim() : "";
-      return {
-        id: panel.id.slice("player_board_".length),
-        score: /^\d+$/.test(scoreText) ? Number(scoreText) : null
-      };
-    });
-    const active = panels.filter(panel => panel.matches(".active-player, .player-board-active"));
     const itemIds = new Set(graphics.map(item => /^player_items_(\d+)_[CSERO]$/.exec(item.parentId ?? "")?.[1]).filter(Boolean));
     const localPlayerId = itemIds.size === 1 ? [...itemIds][0] : null;
-    const title = boardDocument.getElementById("pagemaintitletext");
-    const turnText = title && isDisplayed(title) ? title.innerText.trim() : "";
-    const named = panels.filter(panel => {
-      const name = panel.querySelector(".player-name");
-      return name && isDisplayed(name) && name.innerText.trim() &&
-        turnText.startsWith(name.innerText.trim() + " ");
-    });
-    const yourTurn = /^(?:you must\b|your turn\b|it's your turn\b)/i.test(turnText);
-    const activePlayerId = (yourTurn ? localPlayerId : null) ??
-      (active.length === 1 ? active[0].id.slice(13) : null) ??
-      (named.length === 1 ? named[0].id.slice(13) : null);
+    const turn = readSplendorTurn(boardDocument, isDisplayed, localPlayerId);
 
     return {
       schemaVersion: 3,
-      activePlayerId,
+      ...turn,
       localPlayerId,
-      turnText,
-      players,
       game: "splendor",
       capturedAt: new Date().toISOString(),
       text,
