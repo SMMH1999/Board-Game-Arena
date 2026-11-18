@@ -111,6 +111,10 @@ globalThis.createSplendorGuide = () => {
     function cardLabel(id) {
       const card = plan.snapshot.graphics.find(item => item.elementId === id);
       if (/^drawpile[123]$/.test(id)) return `دستهٔ سطح ${id.at(-1)}`;
+      if (!card) {
+        const known = plan.snapshot.gameState?.cards.find(item => item.id === id);
+        return known?.reserved ? `رزرو خودت · کارت ${id.slice(5)}` : `کارت ${id.slice(5)}`;
+      }
       if (card.reserved) return `رزرو خودت · کارت ${id.slice(5)}`;
       const position = plan.snapshot.graphics.filter(item => item.parentId === card.parentId &&
         /^card_\d+$/.test(item.elementId ?? "") && item.x < card.x).length + 1;
@@ -130,26 +134,25 @@ globalThis.createSplendorGuide = () => {
       }), advice.take.returned);
     }
     const paths = advice.paths.filter(path => plan.snapshot.graphics.some(piece => piece.elementId === path.id));
-    if (paths.length && advice.forecastDepth) {
+    if (paths.length || advice.race) {
       const routes = document.createElement("p");
       routes.className = "return";
-      routes.textContent = `پس از ${advice.forecastDepth} نوبت احتمالی حریف · هدف: ${cardLabel(paths[0].id)}` +
-        (paths[1] ? ` · جایگزین: ${cardLabel(paths[1].id)}` : "");
+      const details = [];
+      if (advice.race) {
+        details.push(`هدف امتیازی: ${advice.race.target}`);
+        if (advice.race.finishing) details.push(`امتیاز پس از خرید: ${advice.race.ownNextScore}`);
+        if (advice.race.rivalThreat >= 15) details.push(`تهدید قابل‌مشاهدهٔ حریف: ${advice.race.rivalThreat}`);
+      }
+      if (paths[0]) details.push(`هدف خرید: ${cardLabel(paths[0].id)}`);
+      if (paths[1]) details.push(`جایگزین: ${cardLabel(paths[1].id)}`);
+      routes.textContent = details.join(" · ");
       message.append(routes);
     }
     if (advice.take?.risk?.length || advice.take?.targetContested || advice.buy?.contested) {
       const note = document.createElement("p");
       note.className = "return";
       const risks = [];
-      const paths = advice.paths.filter(path => plan.snapshot.graphics.some(piece => piece.elementId === path.id));
-    if (paths.length && advice.forecastDepth) {
-      const routes = document.createElement("p");
-      routes.className = "return";
-      routes.textContent = `پس از ${advice.forecastDepth} نوبت احتمالی حریف · هدف: ${cardLabel(paths[0].id)}` +
-        (paths[1] ? ` · جایگزین: ${cardLabel(paths[1].id)}` : "");
-      message.append(routes);
-    }
-    if (advice.take?.risk?.length) risks.push(`ژتون کمیاب در مسیر خرید: ${advice.take.risk.map(color => colors[color]).join("، ")}`);
+      if (advice.take?.risk?.length) risks.push(`ژتون کمیاب در مسیر خرید: ${advice.take.risk.map(color => colors[color]).join("، ")}`);
       if (advice.take?.targetContested) risks.push(`کارت هدفِ برداشت برای ${advice.take.targetContested} حریف هم قابل خرید است.`);
       if (advice.buy?.contested) risks.push(`کارت خرید برای ${advice.buy.contested} حریف هم قابل خرید است.`);
       note.textContent = risks.join(" · ");

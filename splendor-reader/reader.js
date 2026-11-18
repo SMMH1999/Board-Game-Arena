@@ -11,6 +11,8 @@
   let archive;
   let boardDocument;
   let turnOrder = [];
+  let firstPlayerId;
+  let roundOrder;
   const observedActions = new Map();
   const guide = createSplendorGuide();
 
@@ -40,6 +42,8 @@
       tableUrl = location.href;
       observedActions.clear();
       turnOrder = [];
+      firstPlayerId = undefined;
+      roundOrder = undefined;
       guide.clearTarget();
       archive = createSplendorArchive(new Date().toISOString().replace(/[^0-9]/g, "") + "-" + crypto.randomUUID());
       history = [];
@@ -72,11 +76,24 @@
       previousSignature = undefined;
       return snapshot;
     }
+    if (snapshot.move === 1 && snapshot.activePlayerId) {
+      firstPlayerId = snapshot.activePlayerId;
+      roundOrder = undefined;
+    }
     const oldActive = turnOrder.at(-1);
     if (snapshot.activePlayerId && oldActive !== snapshot.activePlayerId) {
       turnOrder.push(snapshot.activePlayerId);
       if (turnOrder.length > 12) turnOrder.shift();
     }
+    if (!roundOrder && firstPlayerId) {
+      const firstIndex = turnOrder.indexOf(firstPlayerId);
+      const cycle = firstIndex >= 0 ? turnOrder.slice(firstIndex, firstIndex + snapshot.players.length) : [];
+      if (cycle.length === snapshot.players.length &&
+          new Set(cycle).size === cycle.length && snapshot.players.every(player => cycle.includes(player.id))) {
+        roundOrder = cycle;
+      }
+    }
+    if (roundOrder) snapshot.roundOrder = roundOrder;
     const previousCycle = turnOrder.slice(0, -1);
     const lastOwnTurn = previousCycle.lastIndexOf(snapshot.localPlayerId);
     snapshot.rivalOrder = lastOwnTurn < 0 ? [] : previousCycle.slice(lastOwnTurn + 1);
