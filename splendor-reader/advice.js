@@ -11,7 +11,8 @@ globalThis.splendorAdvice = (snapshot) => {
     byParent.get(graphic.parentId).push(graphic);
   }
   function numberAt(parent, absent, offset = 0) {
-    const entries = (byParent.get(parent) ?? []).filter(item => spriteNumber(item) !== null);
+    const entries = (byParent.get(parent) ?? []).filter(item =>
+      item.backgroundSize === "1000% 300%" && spriteNumber(item) !== null);
     if (!entries.length) return absent;
     return entries.length === 1 ? spriteNumber(entries[0]) + offset : null;
   }
