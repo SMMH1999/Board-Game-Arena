@@ -27,16 +27,16 @@ globalThis.splendorAdvice = (snapshot) => {
     }
   }
   const gemCounter = counters.find(item => item.elementId === "spl_playerboard_gemcount");
-  if (!localPlayerId || !/^\d+\/10$/.test(gemCounter?.text ?? "") ||
+  if (!localPlayerId || !/^\d+\/10$/.test(gemCounter?.text ?? "") || parseInt(gemCounter.text, 10) > 10 ||
       Object.values(holdings).some(value => !Number.isInteger(value)) ||
-      Object.values(discounts).some(value => !Number.isInteger(value)) ||
+      Object.values(discounts).some(value => !Number.isInteger(value)) || parseInt(gemCounter.text, 10) > 10 ||
       Object.values(holdings).reduce((sum, value) => sum + value, 0) !== parseInt(gemCounter.text, 10)) {
     return null;
   }
 
   const cards = [];
   for (const graphic of graphics) {
-    if (!/^card_\d+$/.test(graphic.elementId ?? "") || !/^row_[123]$/.test(graphic.parentId ?? "")) continue;
+    if (!/^card_\d+$/.test(graphic.elementId ?? "") || !(/^row_[123]$/.test(graphic.parentId ?? "") || graphic.reserved === true)) continue;
     const prices = (byParent.get(graphic.elementId) ?? []).filter(item =>
       colors.some(color => item.elementId === `${graphic.elementId}_${color}`));
     if (!prices.length) continue;
@@ -49,7 +49,7 @@ globalThis.splendorAdvice = (snapshot) => {
       }
     }
     if (Object.keys(due).length !== prices.length) continue;
-    cards.push({ id: graphic.elementId, due, payment: Object.values(due).reduce((a, b) => a + b, 0) });
+    cards.push({ id: graphic.elementId, reserved: graphic.reserved === true, due, payment: Object.values(due).reduce((a, b) => a + b, 0) });
   }
 
   const missing = (card, tokens) => colors.reduce((sum, color) =>
@@ -68,31 +68,51 @@ globalThis.splendorAdvice = (snapshot) => {
     const count = Math.min(available.length, 3);
     for (let mask = 1; mask < 2 ** available.length; mask++) {
       const selected = available.filter((_, i) => mask & (1 << i));
-      if (selected.length === count && count <= capacity) takes.push(selected);
+      if (selected.length === count) takes.push(selected);
     }
-    if (capacity >= 2) {
+    {
       for (const color of available) if (bank[color] >= 4) takes.push([color, color]);
     }
   }
 
   const targets = ranked.filter(card => card.shortfall > holdings.G).slice(0, 4);
-  const tokenOptions = takes.map(tokens => {
+  const tokenOptions = takes.map(tokens => evaluateTake(tokens));
+  tokenOptions.sort((a, b) => b.score - a.score || b.tokens.length - a.tokens.length);
+
+  function evaluateTake(tokens) {
     const resulting = { ...holdings };
     for (const color of tokens) resulting[color]++;
-    const gains = targets.map(card => card.shortfall - missing(card, resulting));
-    return {
-      tokens,
-      score: gains.reduce((score, gain, index) => score + gain * (4 - index), 0)
-    };
-  });
-  tokenOptions.sort((a, b) => b.score - a.score || b.tokens.length - a.tokens.length);
+    const returnCount = Math.max(0, tokens.length - capacity);
+    let best;
+    const allColors = [...colors, "G"];
+    function chooseReturns(start, returned) {
+      if (returned.length === returnCount) {
+        const score = targets.reduce((total, card, index) => total +
+          (card.shortfall - missing(card, resulting) + resulting.G - holdings.G) * (4 - index), 0);
+        if (!best || score > best.score) best = { tokens, returned, score };
+        return;
+      }
+      for (let index = start; index < allColors.length; index++) {
+        const color = allColors[index];
+        if (resulting[color] <= 0) continue;
+        resulting[color]--;
+        chooseReturns(index, [...returned, color]);
+        resulting[color]++;
+      }
+    }
+    chooseReturns(0, []);
+    return best;
+  }
 
   const reserveText = counters.find(item => item.elementId === "spl_playerreserve_count")?.text ?? "";
   const canReserve = /^[0-2]\/3$/.test(reserveText);
   const goldAvailable = bank.G > 0;
-  const reserveCard = targets[0] ?? buy;
-  const reserve = canReserve && reserveCard && bank.G !== null && (!goldAvailable || capacity > 0)
-    ? { id: reserveCard.id, gold: goldAvailable }
+  const reserveCard = [...targets, ...ranked].find(card => !card.reserved);
+  const blindDeck = [1, 2, 3].find(level =>
+    /^[1-9]\d*$/.test(counters.find(item => item.elementId === `drawpile_counter_${level}`)?.text ?? ""));
+  const reserveId = reserveCard?.id ?? (blindDeck ? `drawpile${blindDeck}` : null);
+  const reserve = canReserve && reserveId && bank.G !== null
+    ? { id: reserveId, gold: goldAvailable, returned: goldAvailable ? evaluateTake(["G"]).returned : [] }
     : null;
-  return { buy, take: tokenOptions[0] ?? null, reserve };
+  return { buy, take: tokenOptions[0] ?? null, reserve, bank };
 };

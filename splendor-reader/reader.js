@@ -8,6 +8,8 @@
   let previousSignature;
   let journal = createSplendorJournal();
   let overlay;
+  let boardDocument;
+  const guide = createSplendorGuide();
 
   globalThis[key] = (command) => {
     if (command === "events") {
@@ -21,12 +23,14 @@
       timer = undefined;
       overlay?.host.remove();
       overlay = undefined;
+      guide.reset();
       return null;
     }
 
     if (location.href !== tableUrl) {
       clearInterval(timer);
       timer = undefined;
+      guide.reset();
       tableUrl = location.href;
       history = [];
       previousSignature = undefined;
@@ -36,7 +40,6 @@
     const snapshot = capture();
     if (!snapshot || snapshot.archiveFrameUnavailable) return snapshot;
     timer ??= setInterval(capture, 750);
-    renderOverlay(snapshot);
     return { snapshot, history: history.slice(), events: journal.export() };
   };
 
@@ -46,10 +49,12 @@
       timer = undefined;
       overlay?.host.remove();
       overlay = undefined;
+      guide.reset();
       return null;
     }
     const snapshot = readBoard();
     if (!snapshot || snapshot.archiveFrameUnavailable) {
+      guide.reset();
       if (overlay) overlay.message.textContent = "میز در دسترس نیست.";
       previousSignature = undefined;
       return snapshot;
@@ -61,8 +66,8 @@
       history.push(snapshot);
       if (history.length > 150) history.shift();
       previousSignature = signature;
-      renderOverlay(snapshot);
     }
+    renderOverlay(snapshot);
     return snapshot;
   }
 
@@ -89,6 +94,8 @@
       overlay = { host, message };
     }
 
+    if (guide.render(snapshot, boardDocument, overlay.message)) return;
+
     if (!snapshot.activePlayerId && snapshot.activePlayerName) {
       overlay.message.textContent = `نوبت ${snapshot.activePlayerName} است؛ شناسهٔ بازیکن هنوز مشخص نیست.`;
       return;
@@ -103,26 +110,6 @@
         : "ثبت فعال است؛ منتظر تشخیص نوبت شما.";
       return;
     }
-    const suggestion = splendorAdvice(snapshot);
-    function cardPosition(id) {
-      const card = snapshot.graphics.find(item => item.elementId === id);
-      const position = snapshot.graphics.filter(item =>
-        item.parentId === card.parentId && /^card_\d+$/.test(item.elementId ?? "") &&
-        item.x < card.x).length + 1;
-      return `سطح ${card.parentId.at(-1)}، کارت ${position} از چپ`;
-    }
-    const names = { C: "سفید", S: "آبی", E: "سبز", R: "قرمز", O: "سیاه" };
-    const options = [];
-    if (suggestion?.buy) options.push(`خرید: ${cardPosition(suggestion.buy.id)} · ${suggestion.buy.payment} ژتون`);
-    if (suggestion?.take) options.push(`برداشتن: ${suggestion.take.tokens.map(color => names[color]).join("، ")}`);
-    if (suggestion?.reserve) {
-      options.push(`رزرو: ${cardPosition(suggestion.reserve.id)}${suggestion.reserve.gold ? " + یک طلا" : ""}`);
-    }
-    overlay.message.style.whiteSpace = "pre-line";
-    overlay.message.textContent = options.length
-      ? `پیشنهاد اول: ${options[0]}
-${options.slice(1).join("\n")}`.trim()
-      : "حرکت قابل‌تأییدی از وضعیت فعلی پیدا نشد.";
   }
 
   function readBoard() {
@@ -161,7 +148,7 @@ ${options.slice(1).join("\n")}`.trim()
     }
     if (!board || !isDisplayed(board)) return null;
 
-    const boardDocument = board.ownerDocument;
+    boardDocument = board.ownerDocument;
     const boardWindow = boardDocument.defaultView;
     const walker = boardDocument.createTreeWalker(board, NodeFilter.SHOW_TEXT);
     const boardRect = board.getBoundingClientRect();
@@ -196,6 +183,9 @@ ${options.slice(1).join("\n")}`.trim()
       const rect = element.getBoundingClientRect();
       graphics.push({
         elementId: element.id || null,
+        reserved: /^card_\d+$/.test(element.id) &&
+          Boolean(element.closest("#spl_playerreserve, #spl_playerreserve_cards, #player_reserved_cards, #player_reserved")),
+
         parentId: element.parentElement?.closest("[id]")?.id || null,
         backgroundSize: style.backgroundImage === "none" ? null : style.backgroundSize,
         label: element.getAttribute("aria-label") || (isImage ? element.alt : "") ||
@@ -233,6 +223,10 @@ ${options.slice(1).join("\n")}`.trim()
       text,
       counters,
       gameLog,
+      selectedCardIds: graphics.filter(item => /^card_\d+$/.test(item.elementId ?? "") &&
+        boardDocument.getElementById(item.elementId)?.matches(".selected, .card_selected, [aria-selected='true']"))
+        .map(item => item.elementId),
+
       graphics
     };
   }

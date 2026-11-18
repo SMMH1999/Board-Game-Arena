@@ -18,7 +18,7 @@ globalThis.readSplendorTurn = (doc, isDisplayed, localPlayerId) => {
   });
 
   const turnText = visibleText(doc.getElementById("pagemaintitletext"));
-  const yourTurn = /^(?:you must\b|your turn\b|it['’]s your turn\b)/i.test(turnText);
+  const yourTurn = /^(?:you must\b|you (?:have )?selected\b|your turn\b|it['’]s your turn\b)/i.test(turnText);
   const headingName = yourTurn ? null : /^(.+?) must (?:play|\S.*)$/i.exec(turnText)?.[1] ?? null;
   const named = headingName
     ? players.filter(player => player.name?.toLowerCase() === headingName.toLowerCase())
