@@ -13,6 +13,11 @@ globalThis.createSplendorGuide = () => {
 
   function render(snapshot, doc, message) {
     const prompt = snapshot.turnText ?? "";
+    if (/^pay\b.*\bto buy\b/i.test(prompt)) {
+      reset();
+      message.textContent = "خرید در مرحلهٔ پرداخت است. پیشنهاد بعد از پایان پرداخت یا لغو خرید محاسبه می‌شود.";
+      return true;
+    }
     const pending = /^(?:you (?:have )?selected|you (?:must|may) (?:return|discard|choose a noble))/i.test(prompt) ||
       Array.from(doc.querySelectorAll("#generalactions button, #generalactions a")).some(button =>
         button.getClientRects().length && /^confirm\b/i.test(button.innerText.trim()));
@@ -43,6 +48,7 @@ globalThis.createSplendorGuide = () => {
       document.body.append(layer);
     }
     const visibleHalos = new Set();
+    const rivalsExpanded = message.querySelector("details")?.open ?? false;
     message.replaceChildren();
     if (advice.buy || advice.take || advice.reserve) {
       const hint = document.createElement("p");
@@ -121,8 +127,37 @@ globalThis.createSplendorGuide = () => {
         return { id: `coinpile_${color}`, label: colors[color], done: picked(color) >= seen[color] };
       }), advice.take.returned);
     }
+    if (advice.take?.risk?.length || advice.take?.targetContested || advice.buy?.contested) {
+      const note = document.createElement("p");
+      note.className = "return";
+      const risks = [];
+      if (advice.take?.risk?.length) risks.push(`ژتون کمیاب در مسیر خرید: ${advice.take.risk.map(color => colors[color]).join("، ")}`);
+      if (advice.take?.targetContested) risks.push(`کارت هدفِ برداشت برای ${advice.take.targetContested} حریف هم قابل خرید است.`);
+      if (advice.buy?.contested) risks.push(`کارت خرید برای ${advice.buy.contested} حریف هم قابل خرید است.`);
+      note.textContent = risks.join(" · ");
+      message.append(note);
+    }
     if (advice.reserve) {
       addRow("reserve", advice.reserve.gold ? "رزرو + یک طلا" : "رزرو", [cardItem(advice.reserve.id)], advice.reserve.returned);
+    }
+    const rivals = (snapshot.rivalEvents ?? []).filter(event => event.playerId !== snapshot.localPlayerId &&
+      ["gets", "buys", "reserves"].includes(event.action)).slice(-3).reverse();
+    if (rivals.length) {
+      const recent = document.createElement("details");
+      recent.className = "move";
+      recent.open = rivalsExpanded;
+      const label = document.createElement("summary");
+      label.textContent = "آخرین حرکت‌های دیده‌شدهٔ حریفان";
+      recent.append(label);
+      const actions = { gets: "گرفت", buys: "خرید", reserves: "رزرو کرد" };
+      for (const event of rivals) {
+        const player = snapshot.gameState.players.find(item => item.id === event.playerId);
+        const line = document.createElement("div");
+        line.textContent = [player?.name ?? event.playerId, actions[event.action],
+          ...event.icons.map(icon => colors[icon.color])].filter(Boolean).join(" ");
+        recent.append(line);
+      }
+      message.append(recent);
     }
     const blind = (advice.blindDecks ?? []).map(level => `drawpile${level}`)
       .filter(id => id !== advice.reserve?.id);

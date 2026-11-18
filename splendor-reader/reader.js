@@ -10,6 +10,7 @@
   let overlay;
   let archive;
   let boardDocument;
+  const observedActions = new Map();
   const guide = createSplendorGuide();
 
   globalThis[key] = (command) => {
@@ -36,6 +37,7 @@
       guide.reset();
       archive?.flush(true);
       tableUrl = location.href;
+      observedActions.clear();
       archive = createSplendorArchive(new Date().toISOString().replace(/[^0-9]/g, "") + "-" + crypto.randomUUID());
       history = [];
       previousSignature = undefined;
@@ -67,6 +69,8 @@
       previousSignature = undefined;
       return snapshot;
     }
+    for (const event of snapshot.gameLog) observedActions.set(event.id, event);
+    snapshot.rivalEvents = [...observedActions.values()].sort((a, b) => a.move - b.move).slice(-36);
     const { capturedAt, ...state } = snapshot;
     const signature = JSON.stringify(state, (key, value) => key === "x" || key === "y" ? undefined : value);
     if (signature !== previousSignature) {
@@ -208,7 +212,7 @@
       graphics.push({
         elementId: element.id || null,
         reserved: /^card_\d+$/.test(element.id) &&
-          Boolean(element.closest("#spl_playerreserve, #spl_playerreserve_cards, #player_reserved_cards, #player_reserved")),
+          Boolean(element.closest("#player_reserve, #spl_playerreserve, #spl_playerreserve_cards, #player_reserved_cards, #player_reserved")),
 
         parentId: element.parentElement?.closest("[id]")?.id || null,
         backgroundSize: style.backgroundImage === "none" ? null : style.backgroundSize,
@@ -225,31 +229,9 @@
     const itemIds = new Set(graphics.map(item => /^player_items_(\d+)_[CSERO]$/.exec(item.parentId ?? "")?.[1]).filter(Boolean));
     const localPlayerId = itemIds.size === 1 ? [...itemIds][0] : null;
     const turn = readSplendorTurn(boardDocument, isDisplayed, localPlayerId);
-    for (const player of turn.players) {
-      const panel = boardDocument.getElementById(`player_board_${player.id}`);
-      player.publicPieces = Array.from(panel?.querySelectorAll("*") ?? []).filter(isDisplayed).flatMap(element => {
-        const style = boardWindow.getComputedStyle(element);
-        if (style.backgroundImage === "none" && !element.matches("img")) return [];
-        return [{
-          id: element.id || null,
-          parentId: element.parentElement?.closest("[id]")?.id || null,
-          label: element.getAttribute("aria-label") || element.getAttribute("title") || element.getAttribute("alt"),
-          size: style.backgroundSize, sprite: style.backgroundPosition
-        }];
-      });
-    }
-    const gameLog = Array.from(boardDocument.querySelectorAll("#logs .log, #logs [id^='log_']"))
-      .filter(entry => isDisplayed(entry) && !entry.querySelector(".log, [id^='log_']"))
-      .slice(0, 50)
-      .map(entry => ({
-        id: entry.id || null,
-        text: entry.innerText.trim(),
-        icons: Array.from(entry.querySelectorAll("img, [title], [aria-label]"))
-          .filter(isDisplayed)
-          .map(icon => icon.getAttribute("aria-label") || icon.getAttribute("title") || icon.getAttribute("alt"))
-          .filter(Boolean)
-      }))
-      .filter(entry => entry.text || entry.icons.length);
+    const gameState = readSplendorBoardData(board, turn.players, localPlayerId, isDisplayed);
+    const moveText = boardDocument.getElementById("move_nbr")?.innerText.trim();
+    const move = /^\d+$/.test(moveText ?? "") ? Number(moveText) : null;
 
     return {
       schemaVersion: 3,
@@ -259,7 +241,9 @@
       capturedAt: new Date().toISOString(),
       text,
       counters,
-      gameLog,
+      gameLog: gameState.events,
+      gameState,
+      move,
       selectedCardIds: graphics.filter(item => /^card_\d+$/.test(item.elementId ?? "") &&
         boardDocument.getElementById(item.elementId)?.matches(".selected, .card_selected, [aria-selected='true']"))
         .map(item => item.elementId),

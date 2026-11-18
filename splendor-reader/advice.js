@@ -26,6 +26,12 @@ globalThis.splendorAdvice = (snapshot) => {
       discounts[color] = numberAt(holder, graphics.some(item => item.elementId === holder) ? 0 : null);
     }
   }
+  const observed = snapshot.gameState;
+  const own = observed?.players.find(player => player.id === localPlayerId);
+  if (own) {
+    Object.assign(holdings, own.tokens);
+    Object.assign(discounts, own.discounts);
+  }
   const gemCounter = counters.find(item => item.elementId === "spl_playerboard_gemcount");
   if (!localPlayerId || !/^\d+\/10$/.test(gemCounter?.text ?? "") || parseInt(gemCounter.text, 10) > 10 ||
       Object.values(holdings).some(value => !Number.isInteger(value)) ||
@@ -34,8 +40,12 @@ globalThis.splendorAdvice = (snapshot) => {
     return null;
   }
 
-  const cards = [];
-  for (const graphic of graphics) {
+  const cards = observed ? observed.cards.map(card => {
+    const due = Object.fromEntries(Object.entries(card.cost).map(([color, cost]) =>
+      [color, Math.max(0, cost - discounts[color])]));
+    return { ...card, due, payment: Object.values(due).reduce((sum, amount) => sum + amount, 0) };
+  }) : [];
+  for (const graphic of observed ? [] : graphics) {
     if (!/^card_\d+$/.test(graphic.elementId ?? "") || !(/^row_[123]$/.test(graphic.parentId ?? "") || graphic.reserved === true)) continue;
     const prices = (byParent.get(graphic.elementId) ?? []).filter(item =>
       colors.some(color => item.elementId === `${graphic.elementId}_${color}`));
@@ -60,7 +70,11 @@ globalThis.splendorAdvice = (snapshot) => {
     });
   }
 
-  const nobles = graphics.filter(item => /^noble_\d+$/.test(item.elementId ?? "") && item.parentId === "noblesbar")
+  const nobles = observed ? observed.nobles.map(noble => ({
+    points: noble.points,
+    distance: Object.entries(noble.cost).reduce((sum, [color, cost]) => sum + Math.max(0, cost - discounts[color]), 0),
+    missingColors: Object.keys(noble.cost).filter(color => discounts[color] < noble.cost[color])
+  })) : graphics.filter(item => /^noble_\d+$/.test(item.elementId ?? "") && item.parentId === "noblesbar")
     .flatMap(item => {
       const requirements = (byParent.get(item.elementId) ?? []).flatMap(part => {
         const color = colors.find(key => part.elementId === `${item.elementId}_${key}`);
@@ -79,6 +93,11 @@ globalThis.splendorAdvice = (snapshot) => {
   const ownScore = players.find(player => player.id === localPlayerId)?.score ?? 0;
   const rivalScore = Math.max(0, ...players.filter(player => player.id !== localPlayerId).map(player => player.score ?? 0));
   const late = Math.max(ownScore, rivalScore) >= 12;
+  const rivals = observed?.players.filter(player => player.id !== localPlayerId) ?? [];
+  const recent = (snapshot.rivalEvents ?? observed?.events ?? []).slice(-36);
+  const demand = Object.fromEntries(colors.map(color => [color, recent.filter(event =>
+    event.playerId !== localPlayerId && event.action === "gets" &&
+    event.icons.some(icon => icon.kind === "token" && icon.color === color)).length]));
   const ranked = cards.map(card => {
     const progress = nobles.filter(noble => noble.missingColors.includes(card.bonus))
       .sort((a, b) => a.distance - b.distance);
@@ -86,12 +105,21 @@ globalThis.splendorAdvice = (snapshot) => {
     const nobleValue = progress.reduce((sum, noble, index) =>
       sum + (noble.distance > 1 ? (2.2 / noble.distance) / (1 + index * 0.55) : 0), 0);
     const unlocks = cards.filter(other => other.id !== card.id && other.due[card.bonus] > 0).length;
-    const immediate = (card.points ?? 0) + (earnsNoble ? 3 : 0);
+    const noblePoints = Math.max(0, ...progress.filter(noble => noble.distance === 1).map(noble => noble.points ?? 3));
+    const immediate = (card.points ?? 0) + noblePoints;
     const value = immediate * (late ? 2.1 : 1.25) +
       (late ? 0.45 : 1) * (nobleValue + Math.min(unlocks, 5) * 0.18) + 0.7;
     const shortfall = missing(card, holdings);
     const deficit = Math.max(0, shortfall - holdings.G);
-    return { ...card, immediate, earnsNoble, shortfall, deficit, value,
+    const contested = card.reserved || !card.cost ? 0 : rivals.filter(rival => {
+      const costs = Object.entries(card.cost);
+      if (!Number.isInteger(rival.tokens.G) || !costs.every(([color]) =>
+        Number.isInteger(rival.tokens[color]) && Number.isInteger(rival.discounts[color]))) return false;
+      const missing = costs.reduce((sum, [color, cost]) =>
+        sum + Math.max(0, cost - rival.discounts[color] - rival.tokens[color]), 0);
+      return missing <= rival.tokens.G;
+    }).length;
+    return { ...card, immediate, earnsNoble, shortfall, deficit, value, contested,
       triggersEnd: ownScore + immediate >= Math.max(15, rivalScore) && immediate > 0,
       efficiency: value / (1 + deficit * 0.55 + card.payment * 0.075) };
   }).sort((a, b) => b.efficiency - a.efficiency || a.payment - b.payment);
@@ -105,22 +133,22 @@ globalThis.splendorAdvice = (snapshot) => {
     const value = counters.find(item => item.elementId === `coincounter_${color}`)?.text;
     return [color, /^\d+$/.test(value ?? "") ? Number(value) : null];
   }));
-  const available = colors.filter(color => bank[color] > 0);
   const capacity = 10 - parseInt(gemCounter.text, 10);
-  const takes = [];
-  if (colors.every(color => bank[color] !== null)) {
+  function legalDraws(supply) {
+    if (colors.some(color => supply[color] === null)) return [];
+    const available = colors.filter(color => supply[color] > 0);
     const count = Math.min(available.length, 3);
+    const draws = available.filter(color => supply[color] >= 4).map(color => [color, color]);
     for (let mask = 1; mask < 2 ** available.length; mask++) {
-      const selected = available.filter((_, i) => mask & (1 << i));
-      if (selected.length === count) takes.push(selected);
+      const selected = available.filter((_, index) => mask & (1 << index));
+      if (selected.length === count) draws.push(selected);
     }
-    {
-      for (const color of available) if (bank[color] >= 4) takes.push([color, color]);
-    }
+    return draws;
   }
+  const takes = legalDraws(bank);
 
   const targets = ranked.filter(card => card.deficit > 0).slice(0, 6);
-  const tokenOptions = takes.map(tokens => evaluateTake(tokens));
+  const tokenOptions = takes.map(evaluateTake).filter(option => option?.score > 0);
   tokenOptions.sort((a, b) => b.score - a.score || b.tokens.length - a.tokens.length);
 
   function evaluateTake(tokens) {
@@ -131,14 +159,32 @@ globalThis.splendorAdvice = (snapshot) => {
     const allColors = [...colors, "G"];
     function chooseReturns(start, returned) {
       if (returned.length === returnCount) {
+        if (allColors.every(color => resulting[color] === holdings[color])) return;
+        const nextBank = Object.fromEntries(colors.map(color => [color, bank[color] === null ? null :
+          bank[color] + holdings[color] - resulting[color]]));
+        const nextDraws = legalDraws(nextBank);
         const paths = targets.map(card => {
           const remaining = Math.max(0, missing(card, resulting) - resulting.G);
           const gain = card.deficit - remaining;
+          // Only credit a second draw when the bank and token limit permit the finishing colors.
+          const finishable = remaining > 0 && nextDraws.some(draw => {
+            const withDraw = { ...resulting };
+            for (const color of draw) withDraw[color]++;
+            const payment = Object.values(card.due).reduce((sum, due) => sum + due, 0);
+            return payment <= 10 && missing(card, withDraw) <= resulting.G;
+          });
           return { id: card.id, score: gain <= 0 ? 0 :
-            card.value * (gain / card.deficit) / (1 + remaining * 0.6) };
+            card.value * (gain / card.deficit) /
+              (1 + remaining * 0.6 + card.contested * 0.45) * (finishable ? 1.15 : 1) };
         }).sort((a, b) => b.score - a.score);
-        const score = (paths[0]?.score ?? 0) + (paths[1]?.score ?? 0) * 0.35;
-        if (!best || score > best.score) best = { tokens, returned, score, target: paths[0]?.score ? paths[0].id : null };
+        const target = targets.find(card => card.id === paths[0]?.id);
+        const exposed = colors.filter(color => demand[color] > 0 && target?.due[color] > resulting[color]);
+        const risk = exposed.filter(color => bank[color] !== null && bank[color] <= 2);
+        const score = (paths[0]?.score ?? 0) + (paths[1]?.score ?? 0) * 0.35 - risk.length * 0.12;
+        if (!best || score > best.score) best = {
+          tokens, returned, score, risk, target: paths[0]?.score ? paths[0].id : null,
+          targetContested: paths[0]?.score ? target?.contested ?? 0 : 0
+        };
         return;
       }
       for (let index = start; index < allColors.length; index++) {
@@ -154,7 +200,7 @@ globalThis.splendorAdvice = (snapshot) => {
   }
 
   const reserveText = counters.find(item => item.elementId === "spl_playerreserve_count")?.text ?? "";
-  const canReserve = /^[0-2]\/3$/.test(reserveText);
+  const canReserve = /^[0-2]\/3$/.test(reserveText) && (!observed || observed.cards.filter(card => card.reserved).length < 3);
   const goldAvailable = bank.G > 0;
   const reservations = ranked.filter(card => !card.reserved).map(card => {
     const goldGain = goldAvailable && capacity > 0 && card.deficit > 0 ? 1 : 0;
@@ -168,7 +214,7 @@ globalThis.splendorAdvice = (snapshot) => {
     const scarce = waiting > 0 && colorsNeeded.some(color => bank[color] === 0);
     const score = card.value / (1.8 + waiting * 0.6 + card.payment * 0.09 + occupied) +
       (colorsNeeded.length === 1 && waiting <= 3 ? 0.25 : 0) +
-      (synergy ? 0.2 : 0) - (sharedDemand ? 0.25 : 0) - (scarce ? 0.35 : 0) -
+      (synergy ? 0.2 : 0) + Math.min(card.contested, 2) * 0.18 - (sharedDemand ? 0.25 : 0) - (scarce ? 0.35 : 0) -
       (card.deficit === 0 ? 0.6 : 0);
     return { id: card.id, score, gold: goldAvailable };
   }).sort((a, b) => b.score - a.score);
@@ -177,7 +223,7 @@ globalThis.splendorAdvice = (snapshot) => {
     /^[1-9]\d*$/.test(counters.find(item => item.elementId === `drawpile_counter_${level}`)?.text ?? ""));
   const reserveId = reserveCard?.id ?? (blindDecks.length ? `drawpile${blindDecks[0]}` : null);
   const reserve = canReserve && reserveId && bank.G !== null
-    ? { id: reserveId, score: reserveCard?.score ?? 0, gold: goldAvailable, returned: goldAvailable ? evaluateTake(["G"]).returned : [] }
+    ? { id: reserveId, score: reserveCard?.score ?? 0, gold: goldAvailable, returned: goldAvailable ? evaluateTake(["G"])?.returned ?? ["G"].slice(0, capacity > 0 ? 0 : 1) : [] }
     : null;
   const take = tokenOptions[0] ?? null;
   const bestBuyScore = buy ? buy.value - buy.payment * 0.13 - buy.shortfall * 0.2 : -Infinity;
