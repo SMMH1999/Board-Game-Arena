@@ -1,4 +1,4 @@
-globalThis.splendorAdvice = (snapshot) => {
+globalThis.splendorAdvice = (snapshot, preferredTarget = null) => {
   const { graphics, counters, localPlayerId } = snapshot;
   const colors = ["C", "S", "E", "R", "O"];
   const spriteNumber = (graphic) => {
@@ -127,13 +127,25 @@ globalThis.splendorAdvice = (snapshot) => {
     .sort((a, b) => Number(b.triggersEnd) - Number(a.triggersEnd) ||
       (b.value - 0.13 * b.payment - 0.2 * b.shortfall) -
       (a.value - 0.13 * a.payment - 0.2 * a.shortfall));
-  const buy = purchases[0] ?? null;
   const reservedBuy = purchases.find(card => card.reserved) ?? null;
   const bank = Object.fromEntries([...colors, "G"].map(color => {
     const value = counters.find(item => item.elementId === `coincounter_${color}`)?.text;
     return [color, /^\d+$/.test(value ?? "") ? Number(value) : null];
   }));
-  const capacity = 10 - parseInt(gemCounter.text, 10);
+  const inventory = parseInt(gemCounter.text, 10);
+  const capacity = 10 - inventory;
+  const tempo = { buy: 1.35, three: 0.65, two: -0.35, reserveGold: -0.55, reserve: -0.95, exchange: -1.25 };
+  const allColors = [...colors, "G"];
+  const forecast = (tokens, supply, targets = ranked, locked = null) => forecastSplendorRound({
+    rivals, previousOrder: snapshot.rivalOrder ?? [], cards: targets, bank: supply, holdings: tokens,
+    locked, events: recent, colors, legalDraws
+  });
+  const pathScore = projection => (projection.paths[0]?.score ?? 0) + (projection.paths[1]?.score ?? 0) * 0.3;
+  const base = pathScore(forecast(holdings, bank));
+  const supplyAfter = tokens => Object.fromEntries(allColors.map(color => [
+    color, bank[color] === null ? null : bank[color] + holdings[color] - tokens[color]
+  ]));
+
   function legalDraws(supply) {
     if (colors.some(color => supply[color] === null)) return [];
     const available = colors.filter(color => supply[color] > 0);
@@ -149,6 +161,17 @@ globalThis.splendorAdvice = (snapshot) => {
 
   const targets = ranked.filter(card => card.deficit > 0).slice(0, 6);
   const tokenOptions = takes.map(evaluateTake).filter(option => option?.score > 0);
+  for (const option of tokenOptions) {
+    const projection = forecast(option.resulting, supplyAfter(option.resulting));
+    const target = projection.paths.find(path => path.id === option.target);
+    const diversity = colors.filter(color => option.resulting[color] > 0).length -
+      colors.filter(color => holdings[color] > 0).length;
+    const priority = option.returned.length ? tempo.exchange :
+      option.tokens.length === 3 ? tempo.three : tempo.two;
+    option.score += priority + diversity * 0.13 + (pathScore(projection) - base) * 0.55 -
+      (target?.risk ?? 0) * 0.65 - Math.max(0, inventory + option.tokens.length - 7) * 0.12;
+    option.plan = projection.paths.filter(path => path.score > 0);
+  }
   tokenOptions.sort((a, b) => b.score - a.score || b.tokens.length - a.tokens.length);
 
   function evaluateTake(tokens) {
@@ -156,7 +179,6 @@ globalThis.splendorAdvice = (snapshot) => {
     for (const color of tokens) resulting[color]++;
     const returnCount = Math.max(0, tokens.length - capacity);
     let best;
-    const allColors = [...colors, "G"];
     function chooseReturns(start, returned) {
       if (returned.length === returnCount) {
         if (allColors.every(color => resulting[color] === holdings[color])) return;
@@ -181,8 +203,9 @@ globalThis.splendorAdvice = (snapshot) => {
         const exposed = colors.filter(color => demand[color] > 0 && target?.due[color] > resulting[color]);
         const risk = exposed.filter(color => bank[color] !== null && bank[color] <= 2);
         const score = (paths[0]?.score ?? 0) + (paths[1]?.score ?? 0) * 0.35 - risk.length * 0.12;
+        if (!paths[0]?.score && !tokens.includes("G")) return;
         if (!best || score > best.score) best = {
-          tokens, returned, score, risk, target: paths[0]?.score ? paths[0].id : null,
+          tokens, returned, score, risk, resulting: { ...resulting }, target: paths[0]?.score ? paths[0].id : null,
           targetContested: paths[0]?.score ? target?.contested ?? 0 : 0
         };
         return;
@@ -216,18 +239,59 @@ globalThis.splendorAdvice = (snapshot) => {
       (colorsNeeded.length === 1 && waiting <= 3 ? 0.25 : 0) +
       (synergy ? 0.2 : 0) + Math.min(card.contested, 2) * 0.18 - (sharedDemand ? 0.25 : 0) - (scarce ? 0.35 : 0) -
       (card.deficit === 0 ? 0.6 : 0);
-    return { id: card.id, score, gold: goldAvailable };
+    return { id: card.id, score, gold: goldAvailable, card };
+
   }).sort((a, b) => b.score - a.score);
-  const reserveCard = reservations[0];
+  const gold = goldAvailable ? evaluateTake(["G"]) : null;
+  const reserveTokens = gold?.resulting ?? holdings;
+  const reserveReturns = gold?.returned ?? (goldAvailable && capacity === 0 ? ["G"] : []);
+  const reserveChoices = canReserve ? reservations.slice(0, 6).map(option => {
+    const projection = forecast(reserveTokens, supplyAfter(reserveTokens), ranked, option.id);
+    const target = projection.paths.find(path => path.id === option.id);
+    return {
+      ...option, plan: projection.paths, returned: reserveReturns,
+      score: option.score + (goldAvailable ? tempo.reserveGold : tempo.reserve) +
+        (target?.score ?? 0) * 0.24 - reserveReturns.length * 0.55 -
+        Math.max(0, inventory - 7) * 0.23
+    };
+  }).sort((a, b) => b.score - a.score) : [];
+  const reserveCard = reserveChoices[0];
   const blindDecks = [1, 2, 3].filter(level =>
     /^[1-9]\d*$/.test(counters.find(item => item.elementId === `drawpile_counter_${level}`)?.text ?? ""));
   const reserveId = reserveCard?.id ?? (blindDecks.length ? `drawpile${blindDecks[0]}` : null);
   const reserve = canReserve && reserveId && bank.G !== null
-    ? { id: reserveId, score: reserveCard?.score ?? 0, gold: goldAvailable, returned: goldAvailable ? evaluateTake(["G"])?.returned ?? ["G"].slice(0, capacity > 0 ? 0 : 1) : [] }
+    ? reserveCard ?? { id: reserveId, score: goldAvailable ? tempo.reserveGold : tempo.reserve,
+      gold: goldAvailable, returned: reserveReturns, plan: [] }
     : null;
-  const take = tokenOptions[0] ?? null;
-  const bestBuyScore = buy ? buy.value - buy.payment * 0.13 - buy.shortfall * 0.2 : -Infinity;
-  const primary = buy?.triggersEnd || (buy && bestBuyScore >= Math.max(take?.score ?? 0, reserve?.score ?? 0))
-    ? "buy" : take && (!reserve || take.score >= reserve.score) ? "take" : reserve ? "reserve" : buy ? "buy" : null;
-  return { primary, buy, reservedBuy, take, reserve, blindDecks: canReserve && bank.G !== null ? blindDecks : [], bank };
+
+  const buys = purchases.slice(0, 6).map(card => {
+    const remaining = { ...holdings };
+    for (const color of colors) remaining[color] = Math.max(0, remaining[color] - (card.due[color] ?? 0));
+    remaining.G -= card.shortfall;
+    const nextCards = ranked.filter(other => other.id !== card.id).map(other => {
+      if (!card.bonus || !other.due[card.bonus]) return other;
+      return { ...other, due: { ...other.due, [card.bonus]: other.due[card.bonus] - 1 }, payment: other.payment - 1 };
+    });
+    const projection = forecast(remaining, supplyAfter(remaining), nextCards);
+    return {
+      ...card, plan: projection.paths,
+      score: card.value - 0.12 * card.payment - 0.18 * card.shortfall + tempo.buy +
+        Math.min(card.payment, inventory) * (inventory >= 8 ? 0.30 : 0.15) +
+        (pathScore(projection) - base) * 0.20
+    };
+  }).sort((a, b) => Number(b.triggersEnd) - Number(a.triggersEnd) || b.score - a.score);
+  const buy = buys[0] ?? null;
+  const take = tokenOptions.find(option => option.score > 0) ??
+    (!buy && !reserve ? tokenOptions[0] ?? null : null);
+  const moves = [["buy", buy], ["take", take], ["reserve", reserve]].filter(([, move]) => move);
+  moves.sort((a, b) => Number(Boolean(b[1].triggersEnd)) - Number(Boolean(a[1].triggersEnd)) ||
+    b[1].score - a[1].score ||
+    Number(b[1].plan[0]?.id === preferredTarget) - Number(a[1].plan[0]?.id === preferredTarget));
+  const [primary, chosen] = moves[0] ?? [null, null];
+  const paths = chosen?.plan.filter(path => path.score > 0) ?? [];
+  if (paths[0]?.id !== preferredTarget && paths[1]?.id === preferredTarget && paths[1].score === paths[0].score) {
+    [paths[0], paths[1]] = [paths[1], paths[0]];
+  }
+  return { primary, buy, reservedBuy, take, reserve, paths: paths.slice(0, 2),
+    forecastDepth: rivals.length, blindDecks: canReserve && bank.G !== null ? blindDecks : [], bank };
 };

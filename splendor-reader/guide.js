@@ -1,6 +1,7 @@
 globalThis.createSplendorGuide = () => {
   const colors = { C: "سفید", S: "آبی", E: "سبز", R: "قرمز", O: "سیاه", G: "طلا" };
   let plan;
+  let preferredTarget;
   let layer;
   const halos = new Map();
 
@@ -28,7 +29,8 @@ globalThis.createSplendorGuide = () => {
         (!pending && plan?.hadPending && /^you must play/i.test(prompt))) reset();
     if (opponent || /(?:game (?:is )?over|game has ended)/i.test(prompt) || (!ours && !plan)) return false;
     if (!plan && !pending) {
-      const advice = splendorAdvice(snapshot);
+      const advice = splendorAdvice(snapshot, preferredTarget);
+      if (advice?.paths.length) preferredTarget = advice.paths[0].id;
       if (advice) plan = { advice, snapshot, previews: new Map() };
     }
     if (!plan) {
@@ -127,11 +129,27 @@ globalThis.createSplendorGuide = () => {
         return { id: `coinpile_${color}`, label: colors[color], done: picked(color) >= seen[color] };
       }), advice.take.returned);
     }
+    const paths = advice.paths.filter(path => plan.snapshot.graphics.some(piece => piece.elementId === path.id));
+    if (paths.length && advice.forecastDepth) {
+      const routes = document.createElement("p");
+      routes.className = "return";
+      routes.textContent = `پس از ${advice.forecastDepth} نوبت احتمالی حریف · هدف: ${cardLabel(paths[0].id)}` +
+        (paths[1] ? ` · جایگزین: ${cardLabel(paths[1].id)}` : "");
+      message.append(routes);
+    }
     if (advice.take?.risk?.length || advice.take?.targetContested || advice.buy?.contested) {
       const note = document.createElement("p");
       note.className = "return";
       const risks = [];
-      if (advice.take?.risk?.length) risks.push(`ژتون کمیاب در مسیر خرید: ${advice.take.risk.map(color => colors[color]).join("، ")}`);
+      const paths = advice.paths.filter(path => plan.snapshot.graphics.some(piece => piece.elementId === path.id));
+    if (paths.length && advice.forecastDepth) {
+      const routes = document.createElement("p");
+      routes.className = "return";
+      routes.textContent = `پس از ${advice.forecastDepth} نوبت احتمالی حریف · هدف: ${cardLabel(paths[0].id)}` +
+        (paths[1] ? ` · جایگزین: ${cardLabel(paths[1].id)}` : "");
+      message.append(routes);
+    }
+    if (advice.take?.risk?.length) risks.push(`ژتون کمیاب در مسیر خرید: ${advice.take.risk.map(color => colors[color]).join("، ")}`);
       if (advice.take?.targetContested) risks.push(`کارت هدفِ برداشت برای ${advice.take.targetContested} حریف هم قابل خرید است.`);
       if (advice.buy?.contested) risks.push(`کارت خرید برای ${advice.buy.contested} حریف هم قابل خرید است.`);
       note.textContent = risks.join(" · ");
@@ -237,5 +255,5 @@ globalThis.createSplendorGuide = () => {
     return art.childElementCount ? preview : null;
   }
 
-  return { render, reset };
+  return { render, reset, clearTarget: () => { preferredTarget = null; } };
 };
