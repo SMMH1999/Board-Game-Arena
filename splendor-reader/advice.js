@@ -56,7 +56,9 @@ globalThis.splendorAdvice = (snapshot) => {
     sum + Math.max(0, (card.due[color] ?? 0) - tokens[color]), 0);
   const ranked = cards.map(card => ({ ...card, shortfall: missing(card, holdings) }))
     .sort((a, b) => a.shortfall - b.shortfall || a.payment - b.payment);
-  const buy = ranked.find(card => card.shortfall <= holdings.G) ?? null;
+  const purchases = ranked.filter(card => card.shortfall <= holdings.G);
+  const buy = purchases[0] ?? null;
+  const reservedBuy = purchases.find(card => card.reserved) ?? null;
   const bank = Object.fromEntries([...colors, "G"].map(color => {
     const value = counters.find(item => item.elementId === `coincounter_${color}`)?.text;
     return [color, /^\d+$/.test(value ?? "") ? Number(value) : null];
@@ -108,11 +110,11 @@ globalThis.splendorAdvice = (snapshot) => {
   const canReserve = /^[0-2]\/3$/.test(reserveText);
   const goldAvailable = bank.G > 0;
   const reserveCard = [...targets, ...ranked].find(card => !card.reserved);
-  const blindDeck = [1, 2, 3].find(level =>
+  const blindDecks = [1, 2, 3].filter(level =>
     /^[1-9]\d*$/.test(counters.find(item => item.elementId === `drawpile_counter_${level}`)?.text ?? ""));
-  const reserveId = reserveCard?.id ?? (blindDeck ? `drawpile${blindDeck}` : null);
+  const reserveId = reserveCard?.id ?? (blindDecks.length ? `drawpile${blindDecks[0]}` : null);
   const reserve = canReserve && reserveId && bank.G !== null
     ? { id: reserveId, gold: goldAvailable, returned: goldAvailable ? evaluateTake(["G"]).returned : [] }
     : null;
-  return { buy, take: tokenOptions[0] ?? null, reserve, bank };
+  return { buy, reservedBuy, take: tokenOptions[0] ?? null, reserve, blindDecks: canReserve && bank.G !== null ? blindDecks : [], bank };
 };

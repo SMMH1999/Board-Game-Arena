@@ -1,10 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Splendor Table Reader",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Read the displayed Splendor board on demand and export a local JSON snapshot.",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage"
+  ],
   "action": {
     "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "archive.js"
   }
 }

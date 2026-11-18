@@ -44,6 +44,12 @@ globalThis.createSplendorGuide = () => {
     }
     const visibleHalos = new Set();
     message.replaceChildren();
+    if (advice.buy || advice.take || advice.reserve) {
+      const hint = document.createElement("p");
+      hint.className = "return";
+      hint.textContent = "برای این نوبت یکی از گزینه‌ها را انتخاب کن.";
+      message.append(hint);
+    }
 
     function addRow(kind, label, items, returned = []) {
       const row = document.createElement("section");
@@ -103,7 +109,10 @@ globalThis.createSplendorGuide = () => {
       return `سطح ${card.parentId.at(-1)}، کارت ${position} از چپ`;
     }
     const cardItem = id => ({ id, label: cardLabel(id), done: snapshot.selectedCardIds.includes(id) });
-    if (advice.buy) addRow("buy", "خرید", [cardItem(advice.buy.id)]);
+    if (advice.buy) addRow("buy", advice.buy.reserved ? "خرید کارت رزروشده" : "خرید", [cardItem(advice.buy.id)]);
+    if (advice.reservedBuy && advice.reservedBuy.id !== advice.buy?.id) {
+      addRow("reserved-buy", "خرید از رزرو · گزینهٔ دیگر", [cardItem(advice.reservedBuy.id)]);
+    }
     if (advice.take) {
       const seen = {};
       addRow("take", "برداشتن ژتون", advice.take.tokens.map(color => {
@@ -114,6 +123,9 @@ globalThis.createSplendorGuide = () => {
     if (advice.reserve) {
       addRow("reserve", advice.reserve.gold ? "رزرو + یک طلا" : "رزرو", [cardItem(advice.reserve.id)], advice.reserve.returned);
     }
+    const blind = (advice.blindDecks ?? []).map(level => `drawpile${level}`)
+      .filter(id => id !== advice.reserve?.id);
+    if (blind.length) addRow("blind", "رزرو کارت ناشناخته از دسته", blind.map(cardItem));
     for (const [id, halo] of halos) {
       if (!visibleHalos.has(id)) {
         halo.remove();

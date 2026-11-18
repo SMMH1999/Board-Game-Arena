@@ -8,6 +8,7 @@
   let previousSignature;
   let journal = createSplendorJournal();
   let overlay;
+  let archive;
   let boardDocument;
   const guide = createSplendorGuide();
 
@@ -21,6 +22,8 @@
     if (command === "stop") {
       clearInterval(timer);
       timer = undefined;
+      archive?.flush();
+      overlay?.dispose();
       overlay?.host.remove();
       overlay = undefined;
       guide.reset();
@@ -31,7 +34,9 @@
       clearInterval(timer);
       timer = undefined;
       guide.reset();
+      archive?.flush();
       tableUrl = location.href;
+      archive = createSplendorArchive(new Date().toISOString().replace(/[^0-9]/g, "") + "-" + crypto.randomUUID());
       history = [];
       previousSignature = undefined;
       journal = createSplendorJournal();
@@ -47,6 +52,8 @@
     if (location.href !== tableUrl) {
       clearInterval(timer);
       timer = undefined;
+      archive?.flush();
+      overlay?.dispose();
       overlay?.host.remove();
       overlay = undefined;
       guide.reset();
@@ -63,10 +70,14 @@
     const signature = JSON.stringify(state, (key, value) => key === "x" || key === "y" ? undefined : value);
     if (signature !== previousSignature) {
       journal.observe(snapshot);
+      archive.observe(snapshot);
+      if (!history.length || archive.size() >= 12 || snapshot.activePlayerId !== history.at(-1)?.activePlayerId ||
+          /game (?:is )?over|game has ended|end of (?:the )?game/i.test(snapshot.turnText)) archive.flush();
       history.push(snapshot);
       if (history.length > 150) history.shift();
       previousSignature = signature;
     }
+    if (archive.size() && Date.now() - Date.parse(history.at(-1).capturedAt) >= 10000) archive.flush();
     renderOverlay(snapshot);
     return snapshot;
   }
@@ -84,7 +95,9 @@
           overflow:auto; background:#151026; color:#faf5ff; border:1px solid #895ab1; border-radius:16px;
           padding:13px; box-shadow:0 14px 34px #10091baa; font:14px/1.55 system-ui,sans-serif; }
         header, h3 { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-        header { margin-bottom:9px; }
+        header { margin-bottom:9px; cursor:move; touch-action:none; }
+        .grip { display:block; margin:8px auto 0 0; cursor:nwse-resize; touch-action:none; }
+
         header strong { font-size:16px; }
         button { color:inherit; background:#302246; border:1px solid #725692; border-radius:7px;
           padding:4px 10px; font:inherit; cursor:pointer; }
@@ -110,10 +123,14 @@
       header.append(title, close);
       const message = document.createElement("div");
       message.setAttribute("role", "status");
-      panel.append(header, message);
+      const grip = document.createElement("button");
+      grip.type = "button";
+      grip.className = "grip";
+      grip.textContent = "تغییر اندازه ↘";
+      panel.append(header, message, grip);
       shadow.append(styles, panel);
       document.body.append(host);
-      overlay = { host, message };
+      overlay = { host, message, dispose: manageSplendorPanel(host, panel, header, grip) };
     }
 
     if (guide.render(snapshot, boardDocument, overlay.message)) return;
@@ -223,6 +240,19 @@
     const itemIds = new Set(graphics.map(item => /^player_items_(\d+)_[CSERO]$/.exec(item.parentId ?? "")?.[1]).filter(Boolean));
     const localPlayerId = itemIds.size === 1 ? [...itemIds][0] : null;
     const turn = readSplendorTurn(boardDocument, isDisplayed, localPlayerId);
+    for (const player of turn.players) {
+      const panel = boardDocument.getElementById(`player_board_${player.id}`);
+      player.publicPieces = Array.from(panel?.querySelectorAll("*") ?? []).filter(isDisplayed).flatMap(element => {
+        const style = boardWindow.getComputedStyle(element);
+        if (style.backgroundImage === "none" && !element.matches("img")) return [];
+        return [{
+          id: element.id || null,
+          parentId: element.parentElement?.closest("[id]")?.id || null,
+          label: element.getAttribute("aria-label") || element.getAttribute("title") || element.getAttribute("alt"),
+          size: style.backgroundSize, sprite: style.backgroundPosition
+        }];
+      });
+    }
     const gameLog = Array.from(boardDocument.querySelectorAll("#logs .log, #logs [id^='log_']"))
       .filter(entry => isDisplayed(entry) && !entry.querySelector(".log, [id^='log_']"))
       .slice(0, 50)
