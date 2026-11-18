@@ -1,5 +1,7 @@
 const readButton = document.querySelector("#read");
 const stopButton = document.querySelector("#stop");
+const eventsButton = document.querySelector("#events");
+let events;
 const saveButton = document.querySelector("#save");
 const status = document.querySelector("#status");
 const result = document.querySelector("#result");
@@ -21,6 +23,7 @@ const result = document.querySelector("#result");
 readButton.addEventListener("click", async () => {
   readButton.disabled = true;
   saveButton.disabled = true;
+  eventsButton.disabled = true;
   result.hidden = true;
   result.textContent = "";
   status.textContent = "در حال خواندن میز…";
@@ -34,7 +37,7 @@ readButton.addEventListener("click", async () => {
 
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["reader.js"]
+      files: ["journal.js", "reader.js"]
     });
     const [{ result: session }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -52,13 +55,16 @@ readButton.addEventListener("click", async () => {
       return;
     }
 
-    const changes = summarizeChanges(session.history);
-    result.textContent = JSON.stringify({ ...session, changes }, null, 2);
+    const { events: eventLog, ...boardSession } = session;
+    events = eventLog;
+    const changes = summarizeChanges(boardSession.history);
+    result.textContent = JSON.stringify({ ...boardSession, changes }, null, 2);
+    eventsButton.disabled = false;
     result.hidden = false;
     saveButton.disabled = false;
     readButton.textContent = "خواندن مجدد میز";
     stopButton.disabled = false;
-    status.textContent = `ثبت فعال است · ${session.history.length} وضعیت ثبت‌شده. دادهٔ کافی برای پیشنهاد حرکت معتبر در دسترس نیست.`;
+    status.textContent = `ثبت فعال است · ${session.history.length} وضعیت ثبت‌شده. ${events.rounds.filter(round => round.complete).length} دور کامل ثبت شده.`;
   } catch {
     status.textContent = "مرورگر نتوانست این تب را بخواند. میز را در تب عادی Chrome باز کن و دوباره امتحان کن.";
   } finally {
@@ -82,15 +88,30 @@ stopButton.addEventListener("click", async () => {
   }
 });
 
-saveButton.addEventListener("click", () => {
-  const blob = new Blob([result.textContent], { type: "application/json" });
+saveButton.addEventListener("click", () => download(result.textContent, "splendor-snapshot.json"));
+eventsButton.addEventListener("click", async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [{ result: eventLog }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => globalThis.__splendorTableReader?.("events")
+    });
+    if (!eventLog) throw new Error("Event log unavailable");
+    download(JSON.stringify(eventLog, null, 2), "splendor-events.json");
+  } catch {
+    status.textContent = "تاریخچهٔ این میز برای ذخیره در دسترس نیست.";
+  }
+});
+
+function download(content, filename) {
+  const blob = new Blob([content], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "splendor-snapshot.json";
+  link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-});
+}
 
 function isBoardGameArena(address) {
   const url = new URL(address);

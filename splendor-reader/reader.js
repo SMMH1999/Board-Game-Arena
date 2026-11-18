@@ -6,8 +6,14 @@
   let tableUrl;
   let history = [];
   let previousSignature;
+  let journal = createSplendorJournal();
 
   globalThis[key] = (command) => {
+    if (command === "events") {
+      if (location.href !== tableUrl) return null;
+      if (timer !== undefined) capture();
+      return journal.export();
+    }
     if (command === "active") return timer !== undefined;
     if (command === "stop") {
       clearInterval(timer);
@@ -21,12 +27,13 @@
       tableUrl = location.href;
       history = [];
       previousSignature = undefined;
+      journal = createSplendorJournal();
     }
 
     const snapshot = capture();
     if (!snapshot || snapshot.archiveFrameUnavailable) return snapshot;
     timer ??= setInterval(capture, 750);
-    return { snapshot, history: history.slice() };
+    return { snapshot, history: history.slice(), events: journal.export() };
   };
 
   function capture() {
@@ -40,6 +47,7 @@
     const { capturedAt, ...state } = snapshot;
     const signature = JSON.stringify(state);
     if (signature !== previousSignature) {
+      journal.observe(snapshot);
       history.push(snapshot);
       if (history.length > 150) history.shift();
       previousSignature = signature;
@@ -99,6 +107,7 @@
         const rect = range.getBoundingClientRect();
         counters.push({
           text: value,
+          elementId: node.parentElement.id || null,
           x: Math.round(rect.left - boardRect.left),
           y: Math.round(rect.top - boardRect.top)
         });
@@ -116,6 +125,9 @@
 
       const rect = element.getBoundingClientRect();
       graphics.push({
+        elementId: element.id || null,
+        parentId: element.parentElement?.closest("[id]")?.id || null,
+        backgroundSize: style.backgroundImage === "none" ? null : style.backgroundSize,
         label: element.getAttribute("aria-label") || (isImage ? element.alt : "") ||
           element.getAttribute("title") || null,
         x: Math.round(rect.left - boardRect.left),
@@ -126,8 +138,23 @@
       });
     }
 
+    const panels = Array.from(boardDocument.querySelectorAll("#player_boards [id^='player_board_']"))
+      .filter(panel => /^player_board_\d+$/.test(panel.id) && isDisplayed(panel));
+    const players = panels.map(panel => {
+      const score = panel.querySelector("[id^='player_score_']");
+      const scoreText = score && isDisplayed(score) ? score.innerText.trim() : "";
+      return {
+        id: panel.id.slice("player_board_".length),
+        score: /^\d+$/.test(scoreText) ? Number(scoreText) : null
+      };
+    });
+    const active = panels.filter(panel => panel.matches(".active-player, .player-board-active"));
+    const activePlayerId = active.length === 1 ? active[0].id.slice("player_board_".length) : null;
+
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
+      activePlayerId,
+      players,
       game: "splendor",
       capturedAt: new Date().toISOString(),
       text,
