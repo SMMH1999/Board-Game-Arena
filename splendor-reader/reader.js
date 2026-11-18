@@ -74,22 +74,44 @@
   function renderOverlay(snapshot) {
     if (!overlay) {
       const host = document.createElement("div");
-      host.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:2147483647";
+      host.style.cssText = "position:fixed;bottom:16px;right:20px;z-index:2147483647";
       const shadow = host.attachShadow({ mode: "closed" });
       const panel = document.createElement("section");
       panel.dir = "rtl";
-      panel.style.cssText = "background:#17232c;color:white;padding:12px;border-radius:8px;width:235px;font:14px/1.6 system-ui;box-shadow:0 2px 10px #0005";
+      const styles = document.createElement("style");
+      styles.textContent = `
+        section.panel { box-sizing:border-box; width:min(338px, calc(100vw - 40px)); max-height:75vh;
+          overflow:auto; background:#151026; color:#faf5ff; border:1px solid #895ab1; border-radius:16px;
+          padding:13px; box-shadow:0 14px 34px #10091baa; font:14px/1.55 system-ui,sans-serif; }
+        header, h3 { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        header { margin-bottom:9px; }
+        header strong { font-size:16px; }
+        button { color:inherit; background:#302246; border:1px solid #725692; border-radius:7px;
+          padding:4px 10px; font:inherit; cursor:pointer; }
+        .move { margin-top:7px; padding:8px 10px; background:#221936; border:1px solid #49345f; border-radius:10px; }
+        .primary { border:2px solid #ef78e9; background:#342048; }
+        h3 { margin:0 0 6px; font-size:14px; }
+        .badge { background:#f8a6f2; color:#341239; font-size:11px; padding:2px 7px; border-radius:12px; }
+        .choices { display:flex; gap:6px; flex-wrap:wrap; }
+        .choice { display:grid; justify-items:center; gap:3px; min-width:42px; padding:4px 6px;
+          border-radius:7px; background:#3c2d54; font-size:12px; }
+        .selected { background:#852c48; outline:1px solid #ff7d94; }
+        small { font-size:10px; }
+        .return { margin:5px 0 0; color:#ffe2a8; }
+      `;
+      panel.className = "panel";
+      const header = document.createElement("header");
       const title = document.createElement("strong");
-      title.textContent = "پیشنهاد اسپلندور";
+      title.textContent = "راهنمای اسپلندور";
       const close = document.createElement("button");
       close.type = "button";
       close.textContent = "بستن";
-      close.style.cssText = "float:left;margin-right:8px";
       close.addEventListener("click", () => globalThis[key]("stop"));
+      header.append(title, close);
       const message = document.createElement("div");
       message.setAttribute("role", "status");
-      panel.append(title, close, message);
-      shadow.append(panel);
+      panel.append(header, message);
+      shadow.append(styles, panel);
       document.body.append(host);
       overlay = { host, message };
     }
