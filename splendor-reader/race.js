@@ -19,8 +19,6 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null) => {
   const reserveText = counts.spl_playerreserve_count ?? "";
   const reserved = cards.filter(card => card.reserved).length;
   const reserveCount = /^\d\/3$/.test(reserveText) ? Math.max(reserved, Number(reserveText[0])) : 3;
-  const blindDecks = reserveCount < 3 && bank.G !== null ? [1, 2, 3].filter(level =>
-    /^[1-9]\d*$/.test(counts[`drawpile_counter_${level}`] ?? "")) : [];
   const initial = {
     cards, nobles, bank, reserveCount, tokens: own.tokens, discounts: own.discounts,
     score: own.score, buying: 0
@@ -68,7 +66,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null) => {
   const target = Math.max(15, rivalThreat);
   const pressure = rivalThreat >= 15 ? 1 : 0.65;
 
-  function moveOptions(state, allowBlind = false) {
+  function moveOptions(state) {
     const moves = [];
     for (const card of state.cards) {
       const paid = payment(card, state);
@@ -87,15 +85,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null) => {
       });
     }
 
-    const available = colors.filter(color => state.bank[color] > 0);
-    const draws = [];
-    if (colors.every(color => state.bank[color] !== null)) {
-      for (let mask = 1; mask < 2 ** available.length; mask++) {
-        const take = available.filter((_, index) => mask & (1 << index));
-        if (take.length === Math.min(3, available.length)) draws.push(take);
-      }
-      for (const color of available) if (state.bank[color] >= 4) draws.push([color, color]);
-    }
+    const draws = legalDraws(state.bank);
     const uniqueTakes = new Map();
     const gaps = state.cards.map(card => Math.max(0, payment(card, state).G - state.tokens.G));
     for (const take of draws) {
@@ -113,17 +103,40 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null) => {
     if (state.reserveCount < 3 && state.bank.G !== null) {
       const gold = state.bank.G > 0;
       const stock = gold ? applyTokens(state, ["G"], true) : [{ tokens: state.tokens, returned: [] }];
-      const options = [...state.cards.filter(card => !card.reserved)];
-      if (allowBlind) options.push(...blindDecks.map(level => ({ id: `drawpile${level}` })));
-      for (const card of options) {
-        for (const { tokens, returned } of stock) moves.push({
-          kind: "reserve", id: card.id, gold, returned,
-          state: { ...state, tokens, bank: exchangeBank(state, tokens), reserveCount: state.reserveCount + 1,
-            cards: state.cards.map(other => other === card ? { ...other, reserved: true } : other) }
-        });
+      for (const card of state.cards) {
+        const gap = payment(card, state).G - state.tokens.G;
+        if (card.reserved || gap <= 0) continue;
+        for (const { tokens, returned } of stock) {
+          const next = { ...state, tokens, bank: exchangeBank(state, tokens) };
+          const goldUnlocks = tokens.G > state.tokens.G && payment(card, next).G <= tokens.G;
+          const opensWithOneDraw = contested.has(card.id) && legalDraws(next.bank).some(draw => {
+            const after = { ...tokens };
+            for (const color of draw) after[color]++;
+            return payment(card, { tokens: after, discounts: state.discounts }).G <= after.G &&
+              Object.entries(card.cost).reduce((sum, [color, cost]) =>
+                sum + Math.max(0, cost - state.discounts[color]), 0) <= 10;
+          });
+          if (!goldUnlocks && !opensWithOneDraw) continue;
+          moves.push({
+            kind: "reserve", id: card.id, gold, returned,
+            state: { ...next, reserveCount: state.reserveCount + 1,
+              cards: state.cards.map(other => other === card ? { ...other, reserved: true } : other) }
+          });
+        }
       }
     }
     return moves;
+  }
+
+  function legalDraws(supply) {
+    if (colors.some(color => supply[color] === null)) return [];
+    const available = colors.filter(color => supply[color] > 0);
+    const draws = available.filter(color => supply[color] >= 4).map(color => [color, color]);
+    for (let mask = 1; mask < 2 ** available.length; mask++) {
+      const selected = available.filter((_, index) => mask & (1 << index));
+      if (selected.length === Math.min(3, available.length)) draws.push(selected);
+    }
+    return draws;
   }
 
   function exchangeBank(state, tokens) {
@@ -158,7 +171,34 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null) => {
 
   const contested = new Set(cards.filter(card => !card.reserved && rivals.some(rival =>
     validStock(rival) && payment(card, rival).G <= rival.tokens.G)).map(card => card.id));
+  function nobleFocus(state) {
+    const focus = Object.fromEntries(colors.map(color => [color, 0]));
+    for (const noble of state.nobles) {
+      const costs = Object.entries(noble.cost);
+      const distance = costs.reduce((sum, [color, count]) =>
+        sum + Math.max(0, count - state.discounts[color]), 0);
+      const category = costs.length === 3 && costs.every(([, count]) => count === 3) ? 1.38 : 1;
+      const value = category * noble.points / (2 + distance);
+      for (const [color, count] of costs) {
+        if (state.discounts[color] < count) focus[color] += value;
+      }
+    }
+    return focus;
+  }
+
+  const earlyFocus = nobleFocus(initial);
+  const nobleProgress = state => state.nobles.reduce((sum, noble) => {
+    const costs = Object.entries(noble.cost);
+    const remaining = costs.reduce((missing, [color, count]) =>
+      missing + Math.max(0, count - state.discounts[color]), 0);
+    const original = costs.reduce((missing, [color, count]) =>
+      missing + Math.max(0, count - initial.discounts[color]), 0);
+    const category = costs.length === 3 && costs.every(([, count]) => count === 3) ? 1.38 : 1;
+    return sum + (original - remaining) * category * noble.points / (2 + remaining);
+  }, 0);
+
   function routes(state) {
+    const focus = nobleFocus(state);
     return state.cards.flatMap(card => {
       const paid = payment(card, state);
       const deficit = Math.max(0, paid.G - state.tokens.G);
@@ -175,7 +215,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null) => {
       const risk = exposed ? 1 : 0;
       const turns = 1 + Math.max(Math.ceil(deficit / 3), ...colors.map(color => Math.ceil(Math.max(0,
         (card.cost[color] ?? 0) - state.discounts[color] - state.tokens[color] - state.tokens.G) / 2)));
-      const score = (points * pressure + Math.min(progress, 4) * (1.2 - pressure) + 0.35) /
+      const score = (points * pressure + Math.min(progress, 4) * (1.2 - pressure) + (focus[card.bonus] ?? 0) * 0.95 + 0.35) /
         (turns + 0.5 * deficit + Math.max(0, shortage - state.tokens.G) * 0.8 + risk * 0.7);
       return [{ id: card.id, score, risk, turns }];
     }).sort((a, b) => b.score - a.score || Number(b.id === preferredTarget) - Number(a.id === preferredTarget));
@@ -204,13 +244,13 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null) => {
     const slack = colors.filter(color => state.tokens[color] > 0).length * 0.07 -
       Math.max(0, total(state.tokens) - 8) * 0.12;
     const delay = move.kind === "take" ? move.returned.length * 0.09 : 0;
-    return score + options + slack - delay;
+    return score + options + slack - delay + nobleProgress(state) * (rivalThreat >= 15 ? 0.45 : 1);
   }
 
   // A shallow, bounded beam evaluates real payments, gold, reserve slots and returns.
   const rank = (moves, depth, limit) => moves.map(move => ({ ...move, value: evaluate(move, depth) }))
     .sort((a, b) => b.value - a.value).slice(0, limit);
-  const roots = rank(moveOptions(initial, true), 1, Infinity);
+  const roots = rank(moveOptions(initial), 1, Infinity);
   const candidates = ["buy", "take", "reserve"].flatMap(kind => roots.filter(move => move.kind === kind).slice(0, 6));
   function bestContinuation(root) {
     let frontier = [root];
@@ -235,26 +275,29 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null) => {
         }
       }
     }
-    const followupCard = cards.find(card => card.id === followup);
-    const goldOpensPurchase = followupCard && root.state.tokens.G > initial.tokens.G &&
-      payment(followupCard, initial).G > initial.tokens.G &&
-      payment(followupCard, root.state).G <= root.state.tokens.G;
-    const protectsFollowup = root.id === followup && contested.has(root.id);
-    const speculativeReserve = root.kind === "reserve" && !goldOpensPurchase && !protectsFollowup;
-    return { ...root, followup, score: best + 0.18 * root.value - (speculativeReserve ? 1.5 : 0) };
+    const freesCapacity = root.kind === "buy" ? (total(initial.tokens) - total(root.state.tokens)) : 0;
+    const fullBankAdjustment = total(initial.tokens) >= 9
+      ? Math.min(freesCapacity, 5) * 0.22 - (root.kind === "take" ? root.returned.length * 0.25 : 0)
+      : 0;
+    return { ...root, followup, score: best + 0.18 * root.value + fullBankAdjustment };
   }
-  const moves = candidates.map(bestContinuation).sort((a, b) => b.score - a.score);
+  const moves = candidates.map(bestContinuation)
+    .filter(move => move.kind !== "reserve" || move.followup === move.id)
+    .sort((a, b) => b.score - a.score);
   const top = moves[0];
   const buy = moves.find(move => move.kind === "buy") ?? null;
   const take = moves.find(move => move.kind === "take") ?? null;
-  const reserve = moves.find(move => move.kind === "reserve") ?? null;
+  const reserve = moves.find(move => move.kind === "reserve" && move.score >= top.score - 1.5) ?? null;
   const reservedBuy = moves.find(move => move.kind === "buy" && move.reserved) ??
     roots.find(move => move.kind === "buy" && move.reserved) ?? null;
   const paths = top && top.state.score < 15 && !rivalStartsEnd ? routes(top.state) : [];
   const chosenPath = paths.findIndex(path => path.id === top?.followup);
   if (chosenPath > 0) paths.unshift(...paths.splice(chosenPath, 1));
+  const nobleColors = colors.filter(color => earlyFocus[color] > 0)
+    .sort((a, b) => earlyFocus[b] - earlyFocus[a]);
+  const focusCutoff = earlyFocus[nobleColors[2]] ?? 0;
   return { primary: top?.kind ?? null, buy, take, reserve, reservedBuy,
-    paths: paths.slice(0, 2), bank, blindDecks, forecastDepth: 0,
-    race: { target, rivalThreat, orderKnown, finishing: Boolean(top && top.state.score >= 15),
+    paths: paths.slice(0, 2), bank, blindDecks: [], forecastDepth: 0,
+    race: { target, rivalThreat, orderKnown, nobleColors: nobleColors.filter(color => earlyFocus[color] + 1e-9 >= focusCutoff), finishing: Boolean(top && top.state.score >= 15),
       ownNextScore: top?.state.score ?? own.score } };
 };

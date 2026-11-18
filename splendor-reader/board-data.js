@@ -52,8 +52,12 @@ globalThis.readSplendorBoardData = (board, players, localPlayerId, isDisplayed) 
   }
   const nobles = Array.from(board.querySelectorAll("#noblesbar .spl_noble")).filter(isDisplayed).flatMap(element => {
     const cost = readCosts(element, ".spl_noblecost");
-    const points = number(element.querySelector(".spl_noble_vp"));
-    return cost && Number.isInteger(points) ? [{ id: element.id, cost, points }] : [];
+    const requirements = Object.values(cost ?? {});
+    const printedPoints = (requirements.length === 3 && requirements.every(count => count === 3)) ||
+      (requirements.length === 2 && requirements.every(count => count === 4)) ? 3 : null;
+    // On the standard tiles the artwork carries the points, and BGA hides the separate glyph.
+    const points = number(element.querySelector(".spl_noble_vp"), printedPoints);
+    return cost && !element.matches(".spl_city") && Number.isInteger(points) ? [{ id: element.id, cost, points }] : [];
   });
 
   const events = Array.from(doc.querySelectorAll("#logs .log[data-move-id]")).filter(isDisplayed).slice(0, 100)

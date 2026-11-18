@@ -140,6 +140,7 @@ globalThis.createSplendorGuide = () => {
       const details = [];
       if (advice.race) {
         details.push(`هدف امتیازی: ${advice.race.target}`);
+        if (advice.race.nobleColors?.length) details.push(`تخفیف‌های نوبل: ${advice.race.nobleColors.map(color => colors[color]).join("، ")}`);
         if (advice.race.finishing) details.push(`امتیاز پس از خرید: ${advice.race.ownNextScore}`);
         if (advice.race.rivalThreat >= 15) details.push(`تهدید قابل‌مشاهدهٔ حریف: ${advice.race.rivalThreat}`);
       }
