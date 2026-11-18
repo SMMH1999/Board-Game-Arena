@@ -68,7 +68,13 @@ globalThis.createSplendorJournal = () => {
     const changes = {};
     for (const field of fields) {
       if (JSON.stringify(entry.after[field]) !== JSON.stringify(snapshot[field])) {
-        changes[field] = snapshot[field];
+        const oldItems = entry.after[field];
+        const newItems = snapshot[field];
+        changes[field] = {
+          length: newItems.length,
+          replace: newItems.flatMap((item, index) =>
+            JSON.stringify(item) === JSON.stringify(oldItems[index]) ? [] : [[index, item]])
+        };
       }
     }
     if (Object.keys(changes).length) entry.observations.push({ at: snapshot.capturedAt, changes });
@@ -76,5 +82,5 @@ globalThis.createSplendorJournal = () => {
     if (snapshot.activePlayerId && unassigned.length) unassigned.at(-1).closed = true;
   }
 
-  return { observe, export: () => ({ schemaVersion: 1, rounds, unassigned }) };
+  return { observe, export: () => ({ schemaVersion: 2, rounds, unassigned }) };
 };

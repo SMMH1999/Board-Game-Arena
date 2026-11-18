@@ -20,7 +20,9 @@ const result = document.querySelector("#result");
   }
 })();
 
-readButton.addEventListener("click", async () => {
+readButton.addEventListener("click", readTable);
+
+async function readTable() {
   readButton.disabled = true;
   saveButton.disabled = true;
   eventsButton.disabled = true;
@@ -37,7 +39,7 @@ readButton.addEventListener("click", async () => {
 
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["journal.js", "reader.js"]
+      files: ["journal.js", "advice.js", "reader.js"]
     });
     const [{ result: session }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -70,7 +72,7 @@ readButton.addEventListener("click", async () => {
   } finally {
     readButton.disabled = false;
   }
-});
+}
 
 stopButton.addEventListener("click", async () => {
   stopButton.disabled = true;
@@ -97,7 +99,7 @@ eventsButton.addEventListener("click", async () => {
       func: () => globalThis.__splendorTableReader?.("events")
     });
     if (!eventLog) throw new Error("Event log unavailable");
-    download(JSON.stringify(eventLog, null, 2), "splendor-events.json");
+    download(JSON.stringify(eventLog), "splendor-events.json");
   } catch {
     status.textContent = "تاریخچهٔ این میز برای ذخیره در دسترس نیست.";
   }
@@ -141,3 +143,5 @@ function summarizeChanges(history) {
     };
   });
 }
+
+readTable();
