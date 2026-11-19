@@ -134,6 +134,13 @@
         .grip { display:block; margin:8px auto 0 0; cursor:nwse-resize; touch-action:none; }
 
         header strong { font-size:16px; }
+        .color-token { display:inline-flex; align-items:center; gap:4px; margin:3px; accent-color:var(--gem); }
+        .color-token-disc { width:22px; height:22px; border-radius:50%; background:var(--gem); border:2px solid #ddd4ec; }
+        .color-token[data-color="C"] { --gem:#eceef2; }
+        .color-token[data-color="S"] { --gem:#639aff; }
+        .color-token[data-color="E"] { --gem:#49c77e; }
+        .color-token[data-color="R"] { --gem:#ff6878; }
+        .color-token[data-color="O"] { --gem:#887b9e; }
         button { color:inherit; background:#302246; border:1px solid #725692; border-radius:7px;
           padding:4px 10px; font:inherit; cursor:pointer; }
         .move { margin-top:7px; padding:8px 10px; background:#221936; border:1px solid #49345f; border-radius:10px; }
@@ -163,17 +170,24 @@
       grip.className = "grip";
       grip.textContent = "تغییر اندازه ↘";
       const archiveStatus = document.createElement("small");
-      panel.append(header, message, archiveStatus, grip);
+      const colors = document.createElement("fieldset");
+      const caption = document.createElement("legend");
+      caption.textContent = "ترجیح رنگ";
+      const colorControls = document.createElement("div");
+      colors.append(caption, colorControls);
+      panel.append(header, colors, message, archiveStatus, grip);
       shadow.append(styles, panel);
       document.body.append(host);
-      overlay = { host, message, archiveStatus, dispose: manageSplendorPanel(host, panel, header, grip) };
+      overlay = { host, message, colorControls, archiveStatus, dispose: manageSplendorPanel(host, panel, header, grip) };
     }
 
     const saveStatus = archive.status();
     overlay.archiveStatus.textContent = saveStatus === "folder-required"
       ? "ذخیره متوقف است. از پنجرهٔ افزونه، محل ذخیره را تنظیم کن."
       : saveStatus && saveStatus !== "saved" ? "آخرین ذخیره موفق نبود." : "";
-    if (guide.render(snapshot, boardDocument, overlay.message, archive.recordDecision)) return;
+    const rendered = guide.render(snapshot, boardDocument, overlay.message, archive.recordDecision);
+    guide.renderTargets(snapshot, boardDocument, overlay.colorControls, capture);
+    if (rendered) return;
 
     if (!snapshot.activePlayerId && snapshot.activePlayerName) {
       overlay.message.textContent = `نوبت ${snapshot.activePlayerName} است؛ شناسهٔ بازیکن هنوز مشخص نیست.`;

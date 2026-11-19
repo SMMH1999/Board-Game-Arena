@@ -7,23 +7,32 @@ globalThis.createSplendorGuide = () => {
   let preferredColor = null;
   let layer;
   const halos = new Map();
+  const nobleHalos = new Map();
+  let recommended = [];
+  let colorChanged = false;
+
+  function clearPlan() {
+    plan = undefined;
+    for (const halo of halos.values()) halo.remove();
+    halos.clear();
+  }
 
   function reset() {
-    plan = undefined;
+    clearPlan();
     layer?.remove();
     layer = undefined;
-    halos.clear();
+    nobleHalos.clear();
   }
 
   function render(snapshot, doc, message, recordDecision) {
     const prompt = snapshot.turnText ?? "";
     if (/end of (?:the )?game|game over|game has ended/i.test(prompt)) {
-      reset();
+      clearPlan();
       message.textContent = "بازی به پایان رسید.";
       return true;
     }
     if (/^pay\b.*\bto buy\b/i.test(prompt)) {
-      reset();
+      clearPlan();
       message.textContent = "خرید در مرحلهٔ پرداخت است. پیشنهاد بعد از پایان پرداخت یا لغو خرید محاسبه می‌شود.";
       return true;
     }
@@ -34,9 +43,11 @@ globalThis.createSplendorGuide = () => {
     const opponent = snapshot.activePlayerId && !ours;
     if (!opponent && plan && pending) plan.hadPending = true;
     if (opponent || /(?:game (?:is )?over|game has ended)/i.test(prompt) ||
-        (!pending && plan?.hadPending && /^you must play/i.test(prompt))) reset();
+        (!pending && plan?.hadPending && /^you must play/i.test(prompt))) clearPlan();
     if (opponent || /(?:game (?:is )?over|game has ended)/i.test(prompt) || (!ours && !plan)) return false;
+    if (colorChanged && !pending) clearPlan();
     if (!plan && !pending) {
+      colorChanged = false;
       const deferredBuy = previousBuy && previousBuy.move !== snapshot.move ? previousBuy.id : null;
       const advice = splendorAdvice(snapshot, preferredTarget, deferredBuy, previousNobles, preferredColor);
       if (advice?.incomplete) {
@@ -46,7 +57,10 @@ globalThis.createSplendorGuide = () => {
         recordDecision?.(snapshot, advice);
         return true;
       }
-      if (advice?.race) previousNobles = advice.race.focusedNobles;
+      if (advice?.race) {
+        previousNobles = advice.race.focusedNobles;
+        recommended = advice.race.recommendedColors;
+      }
       if (advice?.paths.length) preferredTarget = advice.paths[0].id;
       if (advice) {
         plan = { advice, snapshot, previews: new Map() };
@@ -68,11 +82,6 @@ globalThis.createSplendorGuide = () => {
       const current = snapshot.counters.find(item => item.elementId === `coincounter_${color}`)?.text;
       return /^\d+$/.test(current ?? "") ? Math.max(0, advice.bank[color] - Number(current)) : 0;
     };
-    if (!layer) {
-      layer = document.createElement("div");
-      layer.style.cssText = "pointer-events:none;position:fixed;inset:0;z-index:2147483646";
-      document.body.append(layer);
-    }
     const visibleHalos = new Set();
     const rivalsExpanded = message.querySelector("details")?.open ?? false;
     message.replaceChildren();
@@ -81,35 +90,6 @@ globalThis.createSplendorGuide = () => {
       hint.className = "return";
       hint.textContent = advice.mode === "optimal-economy" ? "اقتصاد بهینه · برای این نوبت یک حرکت انتخاب کن." : "برای این نوبت یکی از گزینه‌ها را انتخاب کن.";
       message.append(hint);
-    }
-
-    if (advice.race) {
-      const summary = document.createElement("p");
-      const targets = advice.race.recommendedColors.map(color => colors[color]);
-      summary.textContent = targets.length ? `رنگ‌های هدف اقتصاد پایه · ${targets.join("، ")}` : "رنگ هدف اقتصاد پایه هنوز مشخص نیست.";
-      message.append(summary);
-      const label = document.createElement("label");
-      label.textContent = "ترجیح رنگ ";
-      const select = document.createElement("select");
-      select.add(new Option("خودکار", ""));
-      for (const [color, name] of Object.entries(colors)) {
-        if (color !== "G") select.add(new Option(name, color));
-      }
-      select.value = preferredColor ?? "";
-      select.disabled = pending || !ours;
-      select.addEventListener("change", () => {
-        preferredColor = select.value || null;
-        reset();
-        render(snapshot, doc, message, recordDecision);
-      });
-      label.append(select);
-      message.append(label);
-      for (const id of advice.race.focusedNobles) {
-        const element = doc.getElementById(id);
-        if (!element) continue;
-        visibleHalos.add(id);
-        drawHalo(element, false, id, "#ffd166");
-      }
     }
 
     function addRow(kind, label, items, returned = []) {
@@ -264,19 +244,69 @@ globalThis.createSplendorGuide = () => {
     return true;
   }
 
-  function drawHalo(element, done, id, highlight) {
+  function renderTargets(snapshot, doc, controls, refresh) {
+    const choices = [...new Set([preferredColor, ...recommended].filter(Boolean))].slice(0, 3);
+    for (const color of Object.keys(colors)) {
+      if (choices.length >= 2) break;
+      if (!choices.includes(color)) choices.push(color);
+    }
+    if (controls.dataset.colors !== choices.join("")) {
+      controls.dataset.colors = choices.join("");
+      controls.replaceChildren();
+      for (const color of choices) {
+        const label = document.createElement("label");
+        label.className = "color-token";
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = "preferred-color";
+        radio.value = color;
+        radio.addEventListener("change", () => {
+          preferredColor = color;
+          colorChanged = true;
+          refresh();
+        });
+        const preview = spritePreview(doc.getElementById(`coinpile_${color}`), 24);
+        const token = preview ?? document.createElement("span");
+        if (!preview) token.className = "color-token-disc";
+        token.setAttribute("aria-hidden", "true");
+        label.append(radio, token, colors[color]);
+        label.dataset.color = color;
+        controls.append(label);
+      }
+    }
+    for (const radio of controls.querySelectorAll("input")) radio.checked = radio.value === preferredColor;
+
+    const visible = new Set((snapshot.gameState?.nobles ?? []).map(noble => noble.id));
+    for (const id of previousNobles) {
+      const element = visible.has(id) && doc.getElementById(id);
+      if (element) drawHalo(element, false, id, "#ffd166", nobleHalos);
+    }
+    for (const [id, halo] of nobleHalos) {
+      if (!visible.has(id) || !previousNobles.includes(id) || !doc.getElementById(id)?.getClientRects().length) {
+        halo.remove();
+        nobleHalos.delete(id);
+      }
+    }
+  }
+
+  function drawHalo(element, done, id, highlight, activeHalos = halos) {
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.style.cssText = "pointer-events:none;position:fixed;inset:0;z-index:2147483646";
+      document.body.append(layer);
+    }
     const rect = element.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const frame = element.ownerDocument.defaultView.frameElement;
     const bounds = frame?.getBoundingClientRect();
     const sx = bounds && frame.offsetWidth ? bounds.width / frame.offsetWidth : 1;
     const sy = bounds && frame.offsetHeight ? bounds.height / frame.offsetHeight : 1;
-    let halo = halos.get(id);
+    let halo = activeHalos.get(id);
     if (!halo) {
       halo = document.createElement("div");
       halo.setAttribute("aria-hidden", "true");
       layer.append(halo);
-      halos.set(id, halo);
+      activeHalos.set(id, halo);
       if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
         halo.animate([{ opacity: 1 }, { opacity: 0.6 }, { opacity: 1 }], {
           duration: 1350, iterations: Infinity
@@ -288,6 +318,7 @@ globalThis.createSplendorGuide = () => {
   }
 
   function spritePreview(element, width) {
+    if (!element) return null;
     const view = element.ownerDocument.defaultView;
     const rect = element.getBoundingClientRect();
     if (!rect.width || !rect.height || !element.offsetWidth || !element.offsetHeight) return null;
@@ -329,5 +360,5 @@ globalThis.createSplendorGuide = () => {
     return art.childElementCount ? preview : null;
   }
 
-  return { render, reset, clearTarget: () => { previousNobles = []; preferredTarget = null; previousBuy = null; } };
+  return { render, renderTargets, reset, clearTarget: () => { previousNobles = []; recommended = []; preferredColor = null; colorChanged = false; preferredTarget = null; previousBuy = null; } };
 };
