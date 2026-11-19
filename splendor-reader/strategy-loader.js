@@ -10,7 +10,8 @@ function compatibleStrategy(definition, bundled) {
   return definition?.spec_id === bundled.spec_id && definition.version === bundled.version &&
     ["rules", "policy"].every(key => JSON.stringify(definition[key]) === JSON.stringify(bundled[key])) &&
     Object.entries(definition.tuning ?? {}).every(([key, value]) =>
-      Object.hasOwn(bundled.tuning, key) && Number.isFinite(value) && value >= 0 && value <= 1);
+      key === "phases" ? JSON.stringify(value) === JSON.stringify(bundled.tuning.phases) :
+        Object.hasOwn(bundled.tuning, key) && Number.isFinite(value) && value >= 0);
 }
 
 async function archiveStrategy() {

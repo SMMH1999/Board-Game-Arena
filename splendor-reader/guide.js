@@ -92,7 +92,7 @@ globalThis.createSplendorGuide = () => {
     if (advice.buy || advice.take || advice.reserve) {
       const hint = document.createElement("p");
       hint.className = "return";
-      hint.textContent = advice.mode === "optimal-economy" ? "اقتصاد بهینه · برای این نوبت یک حرکت انتخاب کن." : "برای این نوبت یکی از گزینه‌ها را انتخاب کن.";
+      hint.textContent = advice.reason ?? "برای این نوبت یکی از گزینه‌ها را انتخاب کن.";
       message.append(hint);
     }
 

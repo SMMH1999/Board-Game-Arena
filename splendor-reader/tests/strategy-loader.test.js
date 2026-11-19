@@ -20,9 +20,9 @@ test("loads the packaged profile, an archive profile and a compatible imported o
   });
   vm.runInContext(fs.readFileSync(require.resolve("../strategy-loader.js"),"utf8"),ctx);
   assert.equal((await ctx.loadSplendorStrategy()).source,"bundled");
-  archive = { ...spec, tuning: { fallbackWeight: 0.6 } };
-  assert.equal((await ctx.loadSplendorStrategy()).tuning.fallbackWeight,0.6);
-  imported = { ...spec, tuning: { fallbackWeight: 0.8 } };
+  archive = { ...spec, tuning: { goldSpent: 0.6 } };
+  assert.equal((await ctx.loadSplendorStrategy()).tuning.goldSpent,0.6);
+  imported = { ...spec, tuning: { goldSpent: 0.8 } };
   assert.equal((await ctx.loadSplendorStrategy()).source,"imported");
   imported = { ...spec, rules: {} };
   assert.equal((await ctx.loadSplendorStrategy()).source,"archive");

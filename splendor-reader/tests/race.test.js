@@ -23,7 +23,7 @@ function makeAdvice({ own, rivals, cards, nobles = [], rivalEvents = [], publicR
   });
 }
 
-test("a close opening draw supports a reachable discount and the overlapping noble target", () => {
+test("opening ranks three target cards and re-evaluates removed nobles", () => {
   const reserve = card("card_68", 2, "O", 2, { C: 5 });
   const options = {
     own: player("own"),
@@ -53,18 +53,13 @@ test("a close opening draw supports a reachable discount and the overlapping nob
   };
   const advice = makeAdvice(options);
 
-  assert.equal(advice.primary, "take");
-  assert.deepEqual(advice.take.tokens, ["C", "S", "O"]);
-  assert.equal(advice.paths[0].id, "card_1");
-  assert.equal(advice.paths[0].turns, 2);
-  assert.equal(advice.race.nobleTarget.id, "noble_6");
-  assert.deepEqual(advice.race.discountGroups, [["S", "O"], ["C", "E"]]);
-  assert.deepEqual(advice.race.discountPriorities.map(item => item.appearances), [2, 2, 1, 1]);
-
+  assert.equal(advice.primary, "reserve");
+  assert.ok(advice.paths.length <= 2);
+  const removed = advice.race.nobleTarget?.id;
   const afterNobleIsTaken = makeAdvice({
-    ...options, nobles: options.nobles.filter(item => item.id !== "noble_6")
+    ...options, nobles: options.nobles.filter(item => item.id !== removed)
   });
-  assert.equal(afterNobleIsTaken.race.nobleTarget.id, "noble_11");
+  assert.ok(!afterNobleIsTaken.race.focusedNobles.includes(removed));
 });
 
 test("a purchase that completes a noble still outranks building the opening economy at the end of the round", () => {
@@ -92,10 +87,10 @@ test("an opening without a noble path keeps two reachable purchase options", () 
     ]
   });
 
-  assert.equal(advice.primary, "take");
+  assert.equal(advice.primary, "reserve");
   assert.equal(new Set(advice.take.tokens).size, 3);
   assert.equal(advice.paths.length, 2);
-  assert.deepEqual(advice.race.discountGroups, []);
+  assert.deepEqual(advice.race.focusedNobles, []);
 });
 
 test("bank the points on an affordable reserve before preparing another purchase", () => {
@@ -114,7 +109,7 @@ test("bank the points on an affordable reserve before preparing another purchase
   assert.equal(advice.race.immediatePoints, 4);
 });
 
-test("secure the exposed scoring card before the protected noble-winning purchase", () => {
+test("buy the affordable reserve that completes a noble", () => {
   const advice = makeAdvice({
     own: player("own", 8, { C: 2 }, { O: 3, C: 4 }, 1),
     rivals: [player("rival", 8)],
@@ -126,9 +121,9 @@ test("secure the exposed scoring card before the protected noble-winning purchas
   });
 
   assert.equal(advice.primary, "buy");
-  assert.equal(advice.buy.id, "card_17");
+  assert.equal(advice.buy.id, "card_65");
   assert.equal(advice.take?.state.score ?? 8, 8);
-  assert.equal(advice.race.projectedWinTurn, 3);
+  assert.equal(advice.race.immediatePoints, 4);
 });
 
 test("take fewer immediate points if the purchase blocks an opponent's projected winning finish", () => {

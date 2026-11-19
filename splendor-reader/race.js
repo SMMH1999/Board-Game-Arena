@@ -1,10 +1,6 @@
-globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy = null, previousNobles = [], preferredColors = []) => {
+globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, _deferredBuy, _previousNobles, preferredColors = []) => {
   const colors = ["C", "S", "E", "R", "O"];
   const { rules, tuning } = splendorActiveStrategy;
-  const { cardPointPremium, nobleWeight } = tuning;
-  const gameWeight = 1 - nobleWeight;
-  // Keep the search's existing tempo and risk penalties in game-score units.
-  const weighted = (game, noble) => (gameWeight * game + nobleWeight * noble) / 0.7;
   const finish = rules.finish.trigger_points;
   const gems = [...colors, "G"];
   const { cards, nobles, players } = snapshot.gameState;
@@ -77,447 +73,238 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     return { score: (rival.score ?? 0) + extra, cards: validStock(rival) ? developmentCount(rival) + Number(bought) : null };
   }
 
+  const { moveOptions, legalDraws, applyTokens } = splendorClassic.transitions(rules);
+  const leader = Math.max(...players.map(p => p.score ?? 0));
+  const phase = leader < 5 ? "build" : leader < 10 ? "convert" : "finish";
+  const { points, bonus, noble, token, stuck, denial } = tuning.phases[phase];
   const rivalStartsEnd = rivals.some(rival => rival.score >= finish);
-  const rivalThreat = Math.max(0, ...rivals.map(rival => rivalCeiling(rival, initial).score));
-  const target = Math.max(finish, rivalThreat);
-  const pressure = rivalThreat >= finish ? 1 : 0.65;
-
-  const { moveOptions: legalMoves, legalDraws, applyTokens } = splendorClassic.transitions(rules);
-  // A visible purchase can set up a known reserved finisher one rival turn later.
-  const reserveThreats = rivals.flatMap(rival => {
-    const held = publicReserves.filter(record => record.playerId === rival.id).map(record => record.card);
-    if (!held.length || !validStock(rival) || !integer(rival.score)) return [];
-    const state = { ...initial, ...rival, cards: cards.filter(card => !card.reserved),
-      reserveCount: rules.reservation_limit };
-    return legalMoves(state).filter(move => move.kind === "buy").flatMap(move =>
-      held.flatMap(card => {
-        if (payment(card, move.state).G > move.state.tokens.G) return [];
-        const discounts = { ...move.state.discounts, [card.bonus]: move.state.discounts[card.bonus] + 1 };
-        const score = move.state.score + card.points;
-        const completing = move.state.nobles.filter(noble => eligible(noble, discounts) && score + noble.points >= finish);
-        return score >= finish || completing.length ? [{ setup: move.id, firstNoble: move.nobleId,
-          needsNoble: score < finish, completing }] : [];
-      }));
-  });
-  function leavesReserveThreat(state) {
-    return reserveThreats.some(line => state.cards.some(card => card.id === line.setup && !card.reserved) &&
-      (!line.firstNoble || state.nobles.some(n => n.id === line.firstNoble)) &&
-      (!line.needsNoble || line.completing.some(n => state.nobles.includes(n))));
+  const endgame = leader >= 12 || own.score >= 10;
+  const effective = (card, player, color) => Math.max(0, (card.cost[color] ?? 0) - player.discounts[color]);
+  const distance = (tile, player) => colors.reduce((sum, color) => sum + effective(tile, player, color), 0);
+  const progress = (tile, player) => tile.points *
+    (1 - distance(tile, player) / Object.values(tile.cost).reduce((a, b) => a + b, 0)) ** 2;
+  const withBonus = (player, color) => ({ ...player,
+    discounts: { ...player.discounts, [color]: player.discounts[color] + 1 } });
+  const knownRivals = rivals.filter(validStock);
+  const payable = (card, player) => payment(card, player).G <= player.tokens.G;
+  const nextStocks = new WeakMap();
+  function inOneDraw(card, state) {
+    if (payable(card, state)) return true;
+    if (!nextStocks.has(state)) {
+      nextStocks.set(state, legalDraws(state.bank).flatMap(draw => applyTokens(state, draw)));
+    }
+    return nextStocks.get(state).some(({ tokens }) => payable(card, { ...state, tokens }));
   }
-  function challengers(card) {
-    if (card.reserved) return [];
-    return rivals.filter(rival => validStock(rival) && (payment(card, rival).G <= rival.tokens.G ||
-      (Number.isInteger(rival.reservedCount) && rival.reservedCount < rules.reservation_limit)));
+  function estimate(card, state) {
+    const gap = Math.max(0, payment(card, state).G - state.tokens.G);
+    if (!gap) return 1;
+    return inOneDraw(card, state) ? 2 : Math.max(3, Math.ceil(gap / 2.5) + 1);
   }
-  const contest = new Map(cards.map(card => [card.id, challengers(card)]));
-  const contested = new Set(cards.filter(card => contest.get(card.id).length).map(card => card.id));
-  const nobleDistance = (noble, discounts) => Object.entries(noble.cost).reduce((sum, [color, count]) =>
-    sum + Math.max(0, count - discounts[color]), 0);
-  const isThreeColorNoble = noble => {
-    const costs = Object.values(noble.cost);
-    return costs.length === 3 && costs.every(count => count === 3);
+  function competition(tile, player, opponents) {
+    const gap = distance(tile, player);
+    return 1 / (1 + opponents.filter(other => distance(tile, other) <= gap).length);
+  }
+  function targets(state, opponents) {
+    const tiles = state.nobles.map(tile => ({
+      tile, gap: distance(tile, state), weight: competition(tile, state, opponents)
+    })).filter(({ gap, weight }) => gap > 0 && (weight >= 0.34 || gap <= 3))
+      .sort((a, b) => a.gap - b.gap || b.weight - a.weight).slice(0, 2);
+    const market = state.cards.filter(card => !card.reserved);
+    const economy = colors.map(color => {
+      const nobleNeed = tiles.reduce((sum, { tile }) => sum +
+        (effective(tile, state, color) > 0 ? 1 / Object.keys(tile.cost).length : 0), 0);
+      const marketNeed = market.filter(card => effective(card, state, color) > 0).length / 12;
+      return { color, nobleNeed, marketNeed, weight: 1 + 0.6 * nobleNeed + 0.4 * marketNeed };
+    });
+    const demand = new Set(economy.filter(({ nobleNeed, marketNeed }) => nobleNeed > 0 || marketNeed > 0)
+      .map(({ color }) => color));
+    const value = card => card.points + 0.8 * Number(demand.has(card.bonus)) +
+      0.5 * state.nobles.reduce((sum, tile) =>
+        sum + progress(tile, withBonus(state, card.bonus)) - progress(tile, state), 0);
+    const cost = card => distance(card, state);
+    const cards = state.cards.map(card => ({ card, value: value(card), cost: cost(card) }))
+      .sort((a, b) => b.value / (b.cost + 1) - a.value / (a.cost + 1)).slice(0, 3);
+    const need = Object.fromEntries(colors.map(color => [color,
+      cards.reduce((sum, { card }) => sum + effective(card, state, color), 0)]));
+    const caps = Object.fromEntries(colors.map(color => [color, Math.max(0,
+      ...cards.map(({ card }) => card.cost[color] ?? 0), ...tiles.map(({ tile }) => tile.cost[color] ?? 0))]));
+    return { tiles, economy, demand, cards, need, caps, cost, value };
+  }
+  const plan = targets(initial, knownRivals);
+  const elapsed = Math.max(1, (snapshot.move ?? players.length) / players.length);
+  const finishTime = player => {
+    const index = orderKnown ? openedRound.indexOf(player.id) : -1;
+    const turns = index >= 0 && snapshot.move > 0
+      ? Math.max(1, Math.floor((snapshot.move + players.length - 2 - index) / players.length)) : elapsed;
+    return Math.ceil((finish - player.score) / Math.max(player.score / turns * 1.3, 0.5));
   };
-  const nobleCategory = noble => isThreeColorNoble(noble) ? 1.38 : 1;
-
-  const demand = new Map(cards.map(card => [card.id, rivals.reduce((sum, rival) => {
-    if (!validStock(rival) || card.reserved) return sum;
-    const predicted = snapshot.rivalForecasts?.some(move => move.playerId === rival.id && move.cardId === card.id && move.source === "market");
-    const gap = Math.max(0, payment(card, rival).G - rival.tokens.G);
-    return sum + (predicted ? 0.5 : 0) + (gap === 0 ? 1 : rival.reservedCount !== 3 ? 1 / (1 + gap) : 0);
-  }, 0)]));
-  function protection(move) {
-    if (move.kind !== "reserve") return 0;
-    const card = cards.find(c => c.id === move.id);
-    if (card?.level !== 3 || !card.points) return 0;
-    const paid = payment(card, move.state);
-    const gap = Math.max(0, paid.G - move.state.tokens.G);
-    const cost = Object.values(paid).reduce((a,b) => a+b, 0);
-    const shortage = colors.reduce((sum, c) => sum + Math.max(0,
-      (card.cost[c] ?? 0) - move.state.discounts[c] - move.state.tokens[c] - move.state.bank[c]), 0);
-    if (cost > 10 || shortage > move.state.tokens.G) return 0;
-    const earlyPremium = phaseAt(move.state.score) === "build" && gap <= 4 ? card.points * 0.18 : 0;
-    return (card.points * (card.points === 5 ? 1.4 : 1) + earlyPremium) * (0.3 + demand.get(card.id)) /
-      (1 + gap * 0.55 + cost * 0.1 + initial.reserveCount);
+  const rivalTime = Math.min(...rivals.filter(p => integer(p.score)).map(finishTime));
+  const ownTime = finishTime(own);
+  const denialWeight = ownTime <= rivalTime ? 0 : denial * (rivalTime < ownTime - 1 ? 2 : 1);
+  const rivalThreat = Math.max(0, ...rivals.map(rival => rivalCeiling(rival, initial).score));
+  const threat = new Map();
+  for (const rival of knownRivals) {
+    const rivalState = { ...rival, bank, nobles, cards: [
+      ...cards.filter(card => !card.reserved),
+      ...publicReserves.filter(record => record.playerId === rival.id).map(record => ({ ...record.card, reserved: true }))
+    ] };
+    const goals = targets(rivalState, [own, ...knownRivals.filter(other => other.id !== rival.id)]);
+    for (const card of cards.filter(card => !card.reserved)) {
+      const next = withBonus(rival, card.bonus);
+      const opensNoble = nobles.some(tile => !eligible(tile, rival.discounts) && eligible(tile, next.discounts));
+      const value = (inOneDraw(card, rivalState) ? goals.value(card) * (rival.score >= 10 ? 1.5 : 1) : 0) +
+        (opensNoble ? 3 : 0);
+      threat.set(card.id, Math.max(value, threat.get(card.id) ?? 0));
+    }
   }
 
-  function noblePriorities(state) {
-    const priorities = Object.fromEntries(colors.map(color =>
-      [color, { color, appearances: 0, neededFor: 0, threeColorNeededFor: 0, closeness: 0 }]));
-    for (const noble of focused(state)) {
-      const rivalCanClaim = rivals.some(rival => validStock(rival) && nobleDistance(noble, rival.discounts) <= 1);
-      const value = (rivalCanClaim ? 0.65 : 1) * nobleCategory(noble) * noble.points / (2 + nobleDistance(noble, state.discounts));
-      for (const [color, count] of Object.entries(noble.cost)) {
-        if (!priorities[color] || count <= 0) continue;
-        const priority = priorities[color];
-        priority.appearances++;
-        if (state.discounts[color] < count) {
-          priority.neededFor++;
-          if (isThreeColorNoble(noble)) priority.threeColorNeededFor++;
-          priority.closeness += value;
-        }
-      }
+  const permitted = (move, state, goals) => {
+    if (move.kind === "take" && move.tokens[0] === move.tokens[1]) {
+      return goals.need[move.tokens[0]] - state.tokens[move.tokens[0]] >= 2;
     }
-    return Object.values(priorities).filter(priority => priority.appearances > 0)
-      .sort((a, b) => b.appearances - a.appearances || b.neededFor - a.neededFor || b.closeness - a.closeness);
+    if (move.kind !== "buy" || phase !== "build") return true;
+    const card = state.cards.find(item => item.id === move.id);
+    return (card.level !== 3 || developmentCount(state) >= 6) &&
+      (card.points !== 1 || goals.demand.has(card.bonus) || goals.cost(card) <= 1);
+  };
+  function handValue(state) {
+    return colors.reduce((sum, color) => sum + Math.min(state.tokens[color], plan.need[color]), 0) +
+      1.3 * state.tokens.G;
+  }
+  function stuckValue(state) {
+    const liveTargets = state.cards.filter(card => plan.cards.some(entry => entry.card.id === card.id));
+    const blocked = total(state.tokens) >= 9 && !liveTargets.some(card => payable(card, state));
+    const stalled = state.reserveCount > 1 && !state.cards.some(card => card.reserved && inOneDraw(card, state));
+    return 3 * Number(blocked) + (stalled ? 0.7 * (state.reserveCount - 1) : 0);
+  }
+  const initialStuck = stuckValue(initial);
+  function scoreMove(move) {
+    const card = cards.find(k => k.id === move.id);
+    const next = move.state;
+    const blocked = card && !card.reserved ? threat.get(card.id) ?? 0 : 0;
+    const returned = move.returned?.length ?? 0;
+    const crownPoints = next.score - own.score - (move.kind === "buy" ? card.points : 0);
+    const nobleGain = next.nobles.reduce((sum, tile) => sum + competition(tile, initial, knownRivals) *
+      (progress(tile, next) - progress(tile, initial)), 0);
+    const pressure = stuck * (stuckValue(next) - initialStuck);
+    const goldCost = tuning.goldSpent * (move.paid?.G ?? 0);
+    let value = points * crownPoints + noble * nobleGain - tuning.overflow * returned - pressure - goldCost;
+    if (move.kind === "buy") {
+      const improves = initial.discounts[card.bonus] < plan.caps[card.bonus];
+      const color = plan.economy.find(entry => entry.color === card.bonus);
+      const alternative = plan.cards.find(entry => entry.card.id !== card.id && entry.card.points >= card.points);
+      const tempo = alternative && estimate(alternative.card, initial) >= 3 ? 1 : 0;
+      return value + points * card.points + (improves ? bonus * color.weight : 0) + denialWeight * blocked + tempo;
+    }
+    if (move.kind === "reserve") {
+      const target = plan.cards.find(entry => entry.card.id === move.id);
+      return value + 0.8 * 1.3 * Number(move.gold) +
+        (target ? bonus * target.value * 0.6 : 0) + denialWeight * blocked - (reserveCount >= 2 ? 0.7 : 0);
+    }
+    const scarcity = move.tokens.reduce((sum, color) => sum +
+      (bank[color] <= 2 && plan.need[color] > initial.tokens[color] ? 0.1 : 0), 0);
+    const pairDenial = move.tokens.length === 2 && move.tokens[0] === move.tokens[1] &&
+      next.bank[move.tokens[0]] <= 2 ? 0.3 * denialWeight : 0;
+    return value + handValue(next) - handValue(initial) + scarcity + pairDenial;
   }
 
-  // Rank permanent bonuses for this turn. Each card counts once per unpaid color.
-  const colorEconomy = colors.map(color => {
-
-    let marketNeed = 0;
-    for (const card of cards) {
-      if (!(card.cost[color] > own.discounts[color])) continue;
-      const gap = Math.max(0, payment(card, own).G - own.tokens.G);
-      const exposure = card.reserved ? 0 : demand.get(card.id);
-      marketNeed += (1 + card.points / 5) * (card.reserved ? 2 : 1) /
-        ((1 + gap / 3) * (1 + exposure / 2));
+  const faceUp = moveOptions(initial).filter(move => move.kind !== "take" || move.tokens.length);
+  const allowed = faceUp.filter(move => permitted(move, initial, plan));
+  const blindAllowed = bank.G > 0 && reserveCount < rules.reservation_limit &&
+    total(initial.tokens) <= 6 && Math.max(-Infinity, ...allowed.filter(m => m.kind === "reserve").map(scoreMove)) < 1;
+  if (blindAllowed) {
+    for (const [level, count] of Object.entries(initial.decks)) {
+      if (!(count > 0)) continue;
+      const id = "drawpile" + level;
+      const { tokens, returned } = applyTokens(initial, ["G"])[0];
+      const state = { ...initial, tokens, reserveCount: reserveCount + 1,
+        decks: { ...initial.decks, [level]: count - 1 }, bank: { ...bank, G: bank.G - 1 } };
+      allowed.unshift(...splendorClassic.claims({ kind: "reserve", id, blind: true, gold: true, returned, state }));
     }
-    return { color, nobleNeed: 0, marketNeed, weight: 0 };
+  }
+  const options = allowed;
+  function roundThreat(state, triggeredByUs) {
+    return rivals.map(rival => (!triggeredByUs || finishRivals.includes(rival))
+      ? rivalCeiling(rival, state) : { score: rival.score, cards: validStock(rival) ? developmentCount(rival) : null });
+  }
+  function safeFinish(state) {
+    if (state.score < finish) return false;
+    const ours = { score: state.score, cards: developmentCount(state) };
+    return splendorClassic.leaders([ours, ...roundThreat(state, true)]).includes(ours);
+  }
+  function stateValue(state) {
+    const economyValue = plan.economy.reduce((sum, { color, weight }) =>
+      sum + weight * Math.min(state.discounts[color], plan.caps[color]), 0);
+    const progressValue = state.nobles.reduce((sum, tile) =>
+      sum + competition(tile, state, knownRivals) * progress(tile, state), 0);
+    return points * state.score + bonus * economyValue + noble * progressValue +
+      token * handValue(state) - stuck * stuckValue(state);
+  }
+  function finishLine(root) {
+    if (safeFinish(root.state)) return { turns: 1, cards: root.state.buying };
+    let frontier = [root.state];
+    for (let turns = 2; turns <= 3; turns++) {
+      const moves = frontier.flatMap(state => {
+        if (state.score >= finish || roundThreat(state, false).some(other => other.score >= finish)) return [];
+        const goals = targets(state, knownRivals);
+        return moveOptions(state).filter(move => permitted(move, state, goals));
+      });
+      const wins = moves.filter(move => safeFinish(move.state));
+      if (wins.length) return { turns, cards: Math.min(...wins.map(move => move.state.buying)) };
+      frontier = moves.map(({ state }) => ({ state, value: stateValue(state) }))
+        .sort((a, b) => b.value - a.value).slice(0, 6).map(move => move.state);
+    }
+    return { turns: Infinity, cards: Infinity };
+  }
+  const rankKind = { buy: 3, reserve: 2, take: 1 };
+  const preferredBuy = move => move.kind === "buy" &&
+    preferredColors.includes(cards.find(card => card.id === move.id)?.bonus);
+  const byScore = (a, b) => b.score - a.score || (a.returned?.length ?? 0) - (b.returned?.length ?? 0) ||
+    rankKind[b.kind] - rankKind[a.kind] || Number(preferredBuy(b)) - Number(preferredBuy(a));
+  const ranked = options.map(move => ({ ...move, score: scoreMove(move) })).sort(byScore);
+  for (const move of ranked) {
+    const threats = move.state.score >= finish ? roundThreat(move.state, true) : roundThreat(move.state, false);
+    move.loses = threats.some(other => other.score >= finish &&
+      (other.score > move.state.score || (other.score === move.state.score &&
+        (!integer(other.cards) || other.cards < developmentCount(move.state)))));
+    move.wins = safeFinish(move.state);
+  }
+  const shortlist = ranked.slice(0, 8);
+  if (endgame && !rivalStartsEnd) {
+    for (const move of shortlist) move.line = finishLine(move);
+  }
+  ranked.sort((a, b) => {
+    if (rivalStartsEnd) return b.state.score - a.state.score ||
+      developmentCount(a.state) - developmentCount(b.state) || byScore(a, b);
+    return Number(b.wins) - Number(a.wins) || Number(a.loses) - Number(b.loses) ||
+      (a.loses && b.loses ? b.state.score - a.state.score : 0) ||
+      Number(b.kind === "buy" && b.earnsNoble) - Number(a.kind === "buy" && a.earnsNoble) ||
+      ((a.line?.turns ?? Infinity) - (b.line?.turns ?? Infinity)) ||
+      ((a.line?.cards ?? Infinity) - (b.line?.cards ?? Infinity)) || byScore(a, b);
   });
-  const alignment = noble => colorEconomy.reduce((sum, entry) =>
-    sum + (noble.cost[entry.color] > own.discounts[entry.color] ? entry.marketNeed : 0), 0);
-  const focusOrder = [...nobles].sort((a, b) =>
-    Number(previousNobles.includes(b.id)) - Number(previousNobles.includes(a.id)) ||
-    Number(isThreeColorNoble(b)) - Number(isThreeColorNoble(a)) ||
-    nobleDistance(a, own.discounts) - nobleDistance(b, own.discounts) || alignment(b) - alignment(a));
-  const targetCount = players.length === 4 ? 3 : 2;
-  const focused = state => focusOrder.filter(n => state.nobles.includes(n)).slice(0, targetCount);
-  for (const entry of colorEconomy) {
-    entry.nobleNeed = focused(initial).filter(n => n.cost[entry.color] > own.discounts[entry.color]).length;
-  }
-  for (const [metric, share] of [["nobleNeed", tuning.nobleColorWeight], ["marketNeed", tuning.marketColorWeight]]) {
-    const ranked = colorEconomy.filter(entry => entry[metric] > 0)
-      .sort((a, b) => b[metric] - a[metric] ||
-        b.marketNeed - a.marketNeed || b.nobleNeed - a.nobleNeed).slice(0, 3);
-    for (const entry of ranked) entry.weight += share * entry[metric] / ranked[0][metric];
-    if (metric === "marketNeed") {
-      for (const entry of ranked) entry.marketWeight = share * entry.marketNeed / ranked[0].marketNeed;
-    }
-  }
-  const recommendedColors = colorEconomy.filter(entry => entry.weight > 0)
-    .sort((a, b) => b.weight - a.weight).slice(0, 3).map(entry => entry.color);
-  for (const entry of colorEconomy) {
-    if (preferredColors.includes(entry.color)) entry.weight += 0.5;
-      entry.marketWeight = (entry.marketWeight ?? 0) + 0.5;
-  }
-
-  const initialDistances = new Map(initial.nobles.map(noble => [noble, nobleDistance(noble, initial.discounts)]));
-  const nobleProgress = state => focused(state).reduce((sum, noble) => {
-    const remaining = nobleDistance(noble, state.discounts);
-    const steps = initialDistances.get(noble) - remaining;
-    // A useful discount advances every still-available noble that needs it.
-    return sum + steps * (0.12 + nobleCategory(noble) * noble.points / (2 + remaining));
-  }, 0);
-
-  // Every token/return variant of a position shares the same market and permanent bonuses.
-  const marketFeatures = new WeakMap();
-  function features(state) {
-    let byDiscounts = marketFeatures.get(state.cards);
-    if (!byDiscounts) {
-      byDiscounts = new WeakMap();
-      marketFeatures.set(state.cards, byDiscounts);
-    }
-    let byNobles = byDiscounts.get(state.discounts);
-    if (!byNobles) {
-      byNobles = new WeakMap();
-      byDiscounts.set(state.discounts, byNobles);
-    }
-    if (byNobles.has(state.nobles)) return byNobles.get(state.nobles);
-    const priorities = Object.fromEntries(noblePriorities(state).map(priority => [priority.color, priority]));
-    const values = state.cards.map(card => {
-      const nextDiscounts = { ...state.discounts, [card.bonus]: state.discounts[card.bonus] + 1 };
-      const noblePoints = Math.max(0, ...state.nobles.filter(noble =>
-        eligible(noble, nextDiscounts)).map(noble => noble.points));
-      const unlocks = state.cards.filter(other => other.id !== card.id &&
-        (other.cost[card.bonus] ?? 0) > state.discounts[card.bonus]);
-      const progress = unlocks.reduce((sum, other) => sum + (other.points ? 1 : 0.35), 0);
-      const priority = priorities[card.bonus];
-      const available = state.cards.filter(other => !other.reserved && other.bonus === card.bonus).length;
-      // Repetition matters only while another permanent bonus advances a live target.
-      const alignment = priority?.neededFor
-        ? Math.min(3, available) / 3 * (0.5 + Math.min(3, progress) / 3) * Math.min(2, priority.neededFor)
-        : 0;
-      const nobleValue = priority?.neededFor
-        ? priority.neededFor * 0.22 + priority.appearances * 0.05 + priority.closeness * 0.95
-        : 0;
-      const net = colors.map(color => Math.max(0, (card.cost[color] ?? 0) - state.discounts[color]));
-      return { card, noblePoints, progress, nobleValue, alignment, net, netTotal: net.reduce((sum, v) => sum + v, 0) };
-    });
-    byNobles.set(state.nobles, values);
-    return values;
-  }
-
-  const rivalScore = Math.max(0, ...rivals.map(player => player.score ?? 0));
-  function phaseAt(score) {
-    const leader = Math.max(rivalScore, score);
-    return leader < 5 ? "build" : leader < 10 ? "convert" : "finish";
-  }
-
-  function phaseValue(phase, { card, progress }, state) {
-    if (phase === "build") {
-      if (card.level === 3) {
-        // A compact engine can start converting before the leader reaches five.
-        return card.reserved || developmentCount(state) >= 3 ? card.points * 0.35 : 0;
-      }
-      return Math.min(2, progress / 3) * 0.9 + (card.level === 2 ? card.points * 0.45 : 0);
-    }
-    if (phase === "finish") return card.points * 0.85;
-    if (card.level === 3) return card.points * (card.reserved ? 1 : 0.75);
-    return card.level === 1 && !card.points && progress < 3 ? -1 : 0;
-  }
-
-  function moveOptions(state) {
-    const moves = legalMoves(state);
-    const phase = phaseAt(state.score);
-    for (const move of moves) {
-      if (move.kind !== "buy") continue;
-      const feature = features(state).find(item => item.card.id === move.id);
-      move.state.phaseBonus = (state.phaseBonus ?? 0) + phaseValue(phase, feature, state);
-      const alignment = phase === "finish" ? 0 : feature.alignment;
-      move.state.nobleBonus = (state.nobleBonus ?? 0) + alignment;
-    }
-    return moves;
-  }
-
-  function routes(state) {
-    const phase = phaseAt(state.score);
-    let nextStocks;
-    return features(state).map(feature => {
-      const { card, noblePoints, progress, nobleValue, alignment, net, netTotal } = feature;
-      let missing = 0, shortage = 0, distinct = 0, pair = 0, colorBound = 0;
-      for (const [index, color] of colors.entries()) {
-        const gap = Math.max(0, net[index] - state.tokens[color]);
-        missing += gap;
-        shortage += Math.max(0, gap - state.bank[color]);
-        if (gap && state.bank[color] > 0) distinct++;
-        if (state.bank[color] >= 4) pair = Math.max(pair, Math.min(2, gap));
-        colorBound = Math.max(colorBound, Math.ceil((gap - state.tokens.G) / (state.bank[color] >= 4 ? 2 : 1)));
-      }
-      const deficit = Math.max(0, missing - state.tokens.G);
-      const oneDraw = deficit > 0 && netTotal <= rules.hand_token_limit_at_end &&
-        deficit <= Math.max(Math.min(3, distinct), pair) &&
-        (nextStocks ??= legalDraws(state.bank).flatMap(draw => applyTokens(state, draw)))
-          .some(({ tokens }) => payment(card, { tokens, discounts: state.discounts }).G <= tokens.G);
-      const turns = deficit === 0 ? 1 : oneDraw ? 2 : 1 + Math.max(2, Math.ceil(deficit / 3), colorBound);
-      const exposed = !card.reserved && contested.has(card.id);
-      const risk = exposed ? demand.get(card.id) / rivals.length : 0;
-      const gameValue = card.points * (pressure + cardPointPremium) +
-        Math.min(progress, 4) * (1.2 - pressure) + 0.35 + phaseValue(phase, feature, state);
-      const nobleRoute = noblePoints * 2 + nobleValue + alignment;
-      const score = weighted(gameValue, nobleRoute) /
-        (turns + 0.5 * deficit + Math.max(0, shortage - state.tokens.G) * 0.8 + risk * 0.7);
-      return { id: card.id, score, risk, turns, estimated: turns > 2 };
-    }).sort((a, b) => b.score - a.score || Number(b.id === preferredTarget) - Number(a.id === preferredTarget));
-  }
-
-  function finishAtRisk(state) {
-    // A projected final score can be challenged by the rivals with turns still to play.
-    const ourCount = developmentCount(state);
-    const threats = rivals.map(rival => finishRivals.includes(rival) ? rivalCeiling(rival, state) : {
-      score: rival.score ?? 0,
-      cards: validStock(rival) ? developmentCount(rival) : null
-    });
-    const projected = { score: state.score, cards: ourCount };
-    return !splendorClassic.leaders([projected, ...threats]).includes(projected);
-  }
-
-  function endValue(state, depth) {
-    return (finishAtRisk(state) ? 8 : 36) - depth * 3 + (state.score - target) * 0.8;
-  }
-
-  function responderCanFinish(state) {
-    return rivalThreat >= finish && finishRivals.some(rival => rivalCeiling(rival, state).score >= finish);
-  }
-
-  function evaluate(move, depth) {
-    const state = move.state;
-    const end = state.score >= finish || rivalStartsEnd || (orderKnown && responderCanFinish(state));
-    if (end) return endValue(state, depth);
-    const paths = routes(state);
-    const life = Math.max(0, 4 - depth);
-    const score = state.cardPoints * (1.1 + pressure) +
-      state.cardPoints * cardPointPremium + state.buying * life * 0.15;
-    const options = (paths[0]?.score ?? 0) + (paths[1]?.score ?? 0) * tuning.fallbackWeight;
-    const slack = colors.filter(color => state.tokens[color] > 0).length * 0.07 -
-      Math.max(0, total(state.tokens) - 8) * 0.12;
-    const delay = move.kind === "take" ? move.returned.length * 0.09 : 0;
-    const economyGain = colorEconomy.reduce((sum, entry) => sum + (entry.marketWeight ?? 0) *
-      Math.min(1, state.discounts[entry.color] - own.discounts[entry.color]), 0);
-    const noblePoints = state.score - own.score - state.cardPoints;
-    const nobleValue = noblePoints * 3 + (state.nobleBonus ?? 0) +
-      nobleProgress(state) * (rivalThreat >= finish ? 0.45 : 1);
-    return weighted((state.phaseBonus ?? 0) + economyGain * life / 3 + protection(move) + score + slack - delay,
-      nobleValue) + options;
-  }
-
-  // A shallow, bounded beam evaluates real payments, gold, reserve slots and returns.
-  const rank = (moves, depth, limit) => moves.map(move => ({ ...move, value: evaluate(move, depth) }))
-    .sort((a, b) => b.value - a.value).slice(0, limit);
-  const roots = rank(moveOptions(initial), 1, Infinity);
-  const candidates = [
-    ...roots.filter(move => move.kind === "buy"),
-    ...["take", "reserve"].flatMap(kind => roots.filter(move => move.kind === kind).slice(0, 6))
-  ];
-  function deniesForecastDraw(state) {
-    return (snapshot.rivalForecasts ?? []).some(move => move.kind === "take" &&
-      colors.some(color => {
-        const wanted = (move.tokens ?? []).filter(token => token === color).length;
-        const required = wanted === 2 ? 4 : wanted;
-        return required > 0 && initial.bank[color] >= required && state.bank[color] < required;
-      }));
-  }
-
-  function bestContinuation(root, blockedId = null) {
-    const starting = blockedId ? { ...root, state: {
-      ...root.state, cards: root.state.cards.filter(card => card.id !== blockedId)
-    } } : root;
-    let frontier = [starting];
-    let best = blockedId ? evaluate(starting, 1) : root.value;
-    let winTurn = root.state.score >= finish && !finishAtRisk(root.state) ? 1 : Infinity;
-    let followup;
-    for (let depth = 2; depth <= 3 && frontier.length; depth++) {
-      frontier = rank(frontier.flatMap(move => {
-        if (move.state.score >= finish || rivalStartsEnd) return [];
-        if (rivalThreat >= finish && (depth > 2 ||
-            responderCanFinish(move.state))) return [];
-        // Charge the continuation for relying on a market card that rivals can buy now.
-        return moveOptions(move.state).map(next => ({
-          ...next, followup: move.followup ?? (next.kind === "buy" ? next.id : null),
-          exposure: (move.exposure ?? 0) +
-            Number(next.kind === "buy" && !next.reserved && contested.has(next.id)) * 1.15
-        }));
-      }), depth, 4);
-      for (const move of frontier) {
-        const finishTurn = move.state.score >= finish && !finishAtRisk(move.state) ? depth : Infinity;
-        const latePenalty = (depth - 1) * (rivalThreat >= finish ? 4 : 0.75);
-        const value = move.value - latePenalty - (move.exposure ?? 0);
-        if (finishTurn < winTurn || (finishTurn === winTurn && value > best)) {
-          winTurn = finishTurn;
-          best = value;
-          followup = move.followup;
-        }
-      }
-    }
-    // In a duel, closing an immediately useful pair affects the sole responder.
-    const pairDenial = rivals.length === 1 && root.kind === "take" && validStock(rivals[0]) &&
-      colors.some(color => initial.bank[color] >= 4 && root.state.bank[color] < 4 &&
-        cards.some(card => !card.reserved && card.points > 0 &&
-          (card.cost[color] ?? 0) - rivals[0].discounts[color] - rivals[0].tokens[color] >= 2));
-    const freesCapacity = root.kind === "buy" ? (total(initial.tokens) - total(root.state.tokens)) : 0;
-    const fullBankAdjustment = total(initial.tokens) >= 9
-      ? Math.min(freesCapacity, 5) * 0.22 - (root.kind === "take" ? root.returned.length * 0.25 : 0)
-      : 0;
-    const goldEnablesPurchase = root.kind === "reserve" && root.gold && followup &&
-      root.state.cards.some(card => card.id === followup &&
-        payment(card, initial).G > initial.tokens.G &&
-        payment(card, root.state).G <= root.state.tokens.G);
-    const reservationCost = root.kind === "reserve" ? 0.45 + initial.reserveCount * 0.25 +
-      (followup === root.id || goldEnablesPurchase ? 0 : 1) - (goldEnablesPurchase ? 0.25 : 0) : 0;
-    const earlyPurchase = root.kind === "buy"
-      ? 0.45 + (root.reserved ? 0.35 : 0) + (root.id === deferredBuy ? 0.9 : 0)
-      : 0;
-    const denial = pairDenial || (root.kind === "take" && followup && deniesForecastDraw(root.state));
-    const immediateNoblePoints = root.state.score - own.score - root.state.cardPoints;
-    const gameValue = - (leavesReserveThreat(root.state) ? 3 : 0) + root.state.cardPoints * 0.8 +
-      fullBankAdjustment + earlyPurchase - reservationCost + protection(root) + (denial ? 0.12 : 0);
-    return { ...root, followup, winTurn,
-      score: best + 0.26 * root.value + weighted(gameValue, immediateNoblePoints * 1.9) };
-  }
-  function roundPriority(state) {
-    const visibleEnd = rivalStartsEnd || state.score >= finish ||
-      (orderKnown && responderCanFinish(state));
-    if (!visibleEnd) return 1;
-    return finishAtRisk(state) ? 0 : 2;
-  }
-
-  const removalScenarios = new Map();
-  const moves = candidates.map(root => {
-    const line = bestContinuation(root);
-    const risk = line.followup && contested.has(line.followup) &&
-      root.state.cards.some(card => card.id === line.followup && !card.reserved);
-    if (!risk) return line;
-    removalScenarios.set(line.followup, contest.get(line.followup).map(r => r.id));
-    const alternative = bestContinuation(root, line.followup);
-    return { ...line, winTurn: Math.max(line.winTurn, alternative.winTurn), fallback: alternative.followup,
-      score: line.score - Math.max(0, line.score - alternative.score) * Math.min(0.9, tuning.removalWeight + contest.get(line.followup).length * 0.08) };
-  })
-    .map(move => ({ ...move, roundPriority: roundPriority(move.state),
-      immediatePoints: move.state.score - own.score }))
-    // Prefer a surviving finish, then compare realized points and continuation quality.
-    .sort((a, b) => b.roundPriority - a.roundPriority || a.winTurn - b.winTurn || b.score - a.score || b.immediatePoints - a.immediatePoints);
-  const coverageOrder = noblePriorities(initial);
-  const strategicOrder = coverageOrder.filter(priority => priority.neededFor > 0)
-    .sort((a, b) => b.threeColorNeededFor - a.threeColorNeededFor || b.neededFor - a.neededFor ||
-      b.closeness - a.closeness || colors.indexOf(a.color) - colors.indexOf(b.color));
-  const discountGroups = [];
-  let previousGroupWeight;
-  for (const priority of strategicOrder) {
-    if (previousGroupWeight !== priority.threeColorNeededFor) {
-      discountGroups.push([]);
-      previousGroupWeight = priority.threeColorNeededFor;
-    }
-    discountGroups.at(-1).push(priority.color);
-  }
-  const discountRank = new Map(strategicOrder.map((priority, index) => [priority.color, index]));
-
-  // Preserve economic ranking and resolve close opening draws using reachable discount cards.
-  const opening = !rivalStartsEnd && rivalThreat < finish && developmentCount(own) < 2 && own.score <= 1;
-  function openingOptions(state) {
-    const nextStocks = legalDraws(state.bank).flatMap(take => applyTokens(state, take));
-    return state.cards.filter(card => discountRank.has(card.bonus)).flatMap(card => {
-      const payable = tokens => payment(card, { discounts: state.discounts, tokens }).G <= tokens.G;
-      const turns = payable(state.tokens) ? 1 : nextStocks.some(({ tokens }) => payable(tokens)) ? 2 : null;
-      return turns ? [{ id: card.id, rank: discountRank.get(card.bonus), turns }] : [];
-    }).sort((a, b) => a.turns - b.turns || a.rank - b.rank);
-  }
-  let top = moves[0];
-  if (opening && top?.kind === "take" && strategicOrder.length) {
-    const openingTolerance = 0.08;
-    const tied = moves.filter(move => move.kind === "take" && move.roundPriority === top.roundPriority &&
-      move.winTurn === top.winTurn && top.score - move.score <= openingTolerance)
-      .map(move => ({ move, target: openingOptions(move.state)[0] }));
-    tied.sort((a, b) => (a.target?.turns ?? 3) - (b.target?.turns ?? 3) ||
-      (a.target?.rank ?? colors.length) - (b.target?.rank ?? colors.length) ||
-      b.move.score - a.move.score);
-    top = tied[0].move;
-  }
-  const buy = moves.find(move => move.kind === "buy") ?? null;
-  const take = top?.kind === "take" ? top : moves.find(move => move.kind === "take") ?? null;
-  const reserve = moves.find(move => move.kind === "reserve" && move.score >= top.score - 1.5) ?? null;
-  const reservedBuy = moves.find(move => move.kind === "buy" && move.reserved) ??
-    roots.find(move => move.kind === "buy" && move.reserved) ?? null;
-  const paths = top && top.state.score < finish && !rivalStartsEnd ? routes(top.state) : [];
-  const openingPath = opening && top?.kind === "take" && !top.followup ? openingOptions(top.state)[0] : null;
-  const chosenPath = paths.findIndex(path => path.id === (top?.followup ?? openingPath?.id));
-  if (chosenPath > 0) paths.unshift(...paths.splice(chosenPath, 1));
-  if (openingPath && paths[0]?.id === openingPath.id) paths[0].turns = openingPath.turns;
-  const fallbackIndex = paths.findIndex(path => path.id === top?.fallback);
-  if (fallbackIndex > 1) paths.splice(1, 0, ...paths.splice(fallbackIndex, 1));
-  const discountPriorities = coverageOrder.map(({ color, appearances, neededFor, threeColorNeededFor }) =>
-    ({ color, appearances, neededFor, threeColorNeededFor }));
-
-  const routeColor = cards.find(card => card.id === (top?.kind === "buy" ? top.id : paths[0]?.id))?.bonus;
-  const nobleTarget = focused(initial).map(noble => {
-    const needs = Object.fromEntries(Object.entries(noble.cost).flatMap(([color, count]) => {
-      const missing = count - own.discounts[color];
-      return missing > 0 ? [[color, missing]] : [];
-    }));
-    const needColors = Object.keys(needs);
-    const distance = Object.values(needs).reduce((sum, count) => sum + count, 0);
-    const missingColors = needColors.filter(color => !cards.some(card => card.bonus === color)).length;
-    const overlap = coverageOrder.reduce((sum, priority) => needs[priority.color] ?
-      sum + priority.threeColorNeededFor + priority.neededFor * 0.25 : sum, 0);
-    const relevance = needs[routeColor] ? 1.08 : 1;
-    const priority = nobleCategory(noble) * noble.points * relevance * (1 + overlap * 0.03) /
-      (2 + distance + missingColors);
-    return { id: noble.id, needs, distance, missingColors, priority };
-  }).filter(noble => noble.distance > 0).sort((a, b) =>
-    Number(b.distance === 1) - Number(a.distance === 1) || b.priority - a.priority || a.distance - b.distance)[0] ?? null;
-  return { primary: top?.kind ?? null, buy, take, reserve, reservedBuy,
-    paths: paths.slice(0, 2), bank, forecastDepth: rivals.length,
-    race: { phase: phaseAt(own.score), colorEconomy, recommendedColors, preferredColors, focusedNobles: focused(initial).map(n => n.id), removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
+  const top = ranked[0];
+  const buy = ranked.find(move => move.kind === "buy") ?? null;
+  const take = ranked.find(move => move.kind === "take") ?? null;
+  const reserve = ranked.find(move => move.kind === "reserve") ?? null;
+  const reservedBuy = ranked.find(move => move.kind === "buy" && move.reserved) ?? null;
+  const paths = plan.cards.map(({ card, value, cost }) => ({
+    id: card.id, score: value / (cost + 1), turns: estimate(card, top?.state ?? initial)
+  })).filter(path => path.id !== buy?.id || top?.kind !== "buy");
+  const discountPriorities = plan.economy.filter(entry => entry.nobleNeed > 0)
+    .map(entry => ({ color: entry.color, appearances: plan.tiles.filter(({ tile }) => tile.cost[entry.color]).length }))
+    .sort((a, b) => b.appearances - a.appearances);
+  const tile = plan.tiles[0]?.tile;
+  const nobleTarget = tile ? { id: tile.id, needs: Object.fromEntries(colors
+    .map(color => [color, effective(tile, initial, color)]).filter(([, count]) => count > 0)) } : null;
+  const reason = top?.wins ? "برد با احتساب فرصت پاسخ حریف" :
+    top?.earnsNoble ? "تکمیل شرط نوبل" : top ? "بالاترین اولویت بر اساس وزن‌های فاز و وضعیت میز" : null;
+  return { reason, primary: top?.kind ?? null, buy, take, reserve, reservedBuy, paths: paths.slice(0, 2), bank,
+    top3: ranked.slice(0, 3).map(({ state, ...move }) => move),
+    race: { phase, preferredColors, colorEconomy: plan.economy, focusedNobles: plan.tiles.map(({ tile }) => tile.id),
+      recommendedColors: [...plan.economy].sort((a, b) => b.weight - a.weight).slice(0, 3).map(entry => entry.color),
+      discountPriorities, nobleTarget, target: Math.max(finish, rivalThreat), rivalThreat, orderKnown,
       removedTarget: publicReserves.find(record => record.card.id === preferredTarget)?.card.id ?? null,
       finishing: Boolean(top && top.state.score >= finish),
-      projectedWinTurn: Number.isFinite(top?.winTurn) ? top.winTurn : null, responders: finishRivals.map(r => r.id),
-      immediatePoints: top?.immediatePoints ?? 0, ownNextScore: top?.state.score ?? own.score } };
+      projectedWinTurn: top?.wins ? 1 : Number.isFinite(top?.line?.turns) ? top.line.turns : null,
+      immediatePoints: top ? top.state.score - own.score : 0, ownNextScore: top?.state.score ?? own.score } };
 };

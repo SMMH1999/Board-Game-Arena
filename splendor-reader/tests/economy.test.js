@@ -118,8 +118,7 @@ scenario("P05", () => {
     s.cards = [{...target,reserved}];
     s.reserveCount = Number(reserved);
     const result = advice(s);
-    const exposed = result.race.removalScenarios;
-    assert.equal(exposed.some(line => line.target === "target"), !reserved);
+    assert.equal(result.reserve?.id === "target", !reserved);
   }
 });
 
@@ -131,39 +130,23 @@ test("protect a five-point market card the opponent can buy before our next draw
   assert.equal(result.reserve.id,"prize");
 });
 
-test("a shared noble color and a payable reserve cost reinforce the same bonus", () => {
-  const s = state({cards:[card("target","C",4,{S:7},true)], reserveCount:1,
-    nobles:[noble("a",{C:3,S:3,E:3}),noble("b",{S:3,R:3,O:3})]});
+test("color weights follow the mathematical noble and market demand formula", () => {
+  const s = state({ cards:[card("target","C",4,{S:7})],
+    nobles:[noble("a",{C:3,S:3,E:3}),noble("b",{S:3,R:3,O:3})] });
   const blue = advice(s).race.colorEconomy.find(entry => entry.color === "S");
-  assert.equal(blue.nobleNeed,2);
-  assert.equal(blue.weight,1);
-  s.discounts = {...zero,S:7};
-  assert.equal(advice(s).race.colorEconomy.find(entry => entry.color === "S").weight,0);
+  assert.equal(blue.nobleNeed, 2 / 3);
+  assert.equal(blue.marketNeed, 1 / 12);
+  assert.equal(blue.weight, 1 + 0.6 * (2 / 3) + 0.4 / 12);
 });
 
-test("unknown deck tops are excluded and a preferred color adds weight", () => {
-  const s = state({ decks: { 1: 36, 2: 26, 3: 16 } });
-  assert.ok(moveOptions(s).every(move => move.kind !== "reserve"));
-  const counters = Object.entries(s.bank).map(([color, count]) =>
-    ({ elementId: "coincounter_" + color, text: String(count) }));
-  counters.push({ elementId: "spl_playerboard_gemcount", text: "0/10" });
-  const snapshot = { localPlayerId: "me", counters,
-    gameState: { cards: [], nobles: [], players: [{ id: "me", ...s }] } };
-  const result = splendorAdvice(snapshot, null, null, [], "E");
-  assert.equal(result.race.colorEconomy.find(entry => entry.color === "E").weight, 0.5);
-  assert.deepEqual(result.race.recommendedColors, []);
-});
-
-test("target three nobles in four-player games and two in two- and three-player games", () => {
-  for (const count of [2,3,4]) {
-    const s = state({ cards: [], nobles: [
-      noble("a",{C:3,S:3,E:3}), noble("b",{S:3,R:3,O:3}),
-      noble("c",{C:3,R:3,O:3}), noble("d",{C:4,S:4})
-    ] });
-    const others = Array.from({length:count-1},(_,i)=>({id:"r"+i}));
-    const result = advice(s,others);
-    assert.equal(result.race.focusedNobles.length, count === 4 ? 3 : 2);
-  }
+test("cap noble targets at two and drop distant contested nobles", () => {
+  const s = state({ nobles: [
+    noble("a",{C:3,S:3,E:3}), noble("b",{S:3,R:3,O:3}), noble("c",{C:3,R:3,O:3})
+  ] });
+  const rivals = Array.from({length:3}, (_, index) => ({ id:"r"+index }));
+  assert.deepEqual(advice(s, rivals).race.focusedNobles, []);
+  s.discounts = {...zero, C:1,S:1,E:1,R:1,O:1};
+  assert.equal(advice(s, rivals).race.focusedNobles.length, 2);
 });
 
 test("a rival crossing either phase threshold changes our phase immediately", () => {
@@ -189,12 +172,29 @@ test("in conversion a payable tier-three reserve is cashed before a small purcha
   assert.equal(result.buy.id, "protected");
 });
 
-test("at equal cost and noble need the repeated market bonus breaks the tie", () => {
-  for (const bonus of ["S", "C"]) {
-    const s = state({ cards: [card("white","C",0,{}), card("blue","S",0,{}),
-      card("later",bonus,0,{O:7})], nobles: [noble("goal",{C:3,S:3,E:3})] });
-    const result = advice(s);
-    assert.equal(result.primary, "buy");
-    assert.equal(result.buy.id, bonus === "S" ? "blue" : "white");
-  }
+test("early tier-three purchase requires six bonuses", () => {
+  const s = state({ cards:[card("prize","E",4,{S:1})], tokens:{...zero,S:1} });
+  assert.equal(advice(s).buy, null);
+  s.discounts = {...zero, C:6};
+  assert.equal(advice(s).buy.id, "prize");
+});
+
+test("blind reservation is excluded when a face-up reservation scores at least one", () => {
+  const s = state({ cards: Array.from({ length: 4 }, (_, index) => card("low" + index, "C", 0, { S: 3 })),
+    bank: { ...zero, S: 1, G: 1 } });
+  const counters = Object.entries(s.bank).map(([color, count]) =>
+    ({ elementId: "coincounter_" + color, text: String(count) }));
+  counters.push({ elementId: "drawpile_counter_1", text: "3" },
+    { elementId: "spl_playerboard_gemcount", text: "0/10" },
+    { elementId: "spl_playerreserve_count", text: "0/3" });
+  const result = splendorAdvice({ localPlayerId: "me", counters,
+    gameState: { cards: s.cards, nobles: [], players: [{ id: "me", ...s }] } });
+  // Each face-up reservation has exactly the gold value, so the threshold blocks blind reserve.
+  assert.equal(result.reserve.blind, undefined);
+  assert.ok(result.top3.every(move => !move.blind));
+  counters.find(counter => counter.elementId === "spl_playerreserve_count").text = "2/3";
+  const allowed = splendorAdvice({ localPlayerId: "me", counters,
+    gameState: { cards: s.cards, nobles: [], players: [{ id: "me", ...s }] } });
+  assert.equal(allowed.reserve.id, "drawpile1");
+  assert.equal(allowed.reserve.state.tokens.G, 1);
 });
