@@ -1,4 +1,5 @@
 globalThis.createSplendorArchive = (session) => {
+  const extensionVersion = chrome.runtime.getManifest().version;
   const timeline = [];
   const actions = new Map();
   const cards = new Map();
@@ -61,7 +62,8 @@ globalThis.createSplendorArchive = (session) => {
     if (snapshot.move == null) return;
     const choice = advice[advice.primary];
     const decision = {
-      move: snapshot.move, primary: advice.primary, incomplete: advice.incomplete ?? null,
+      move: snapshot.move, primary: advice.primary, strategyId: advice.strategyId ?? null,
+      incomplete: advice.incomplete ?? null,
       selection: choice ? choice.tokens ? { tokens: choice.tokens, returned: choice.returned } : { cardId: choice.id } : null,
       scores: Object.fromEntries(["buy", "take", "reserve"].map(kind => [kind, advice[kind]?.score ?? null])),
       targets: advice.paths.map(path => path.id),
@@ -119,8 +121,13 @@ globalThis.createSplendorArchive = (session) => {
     if (savedRevision === revision || (!force && Date.now() - lastAttempt < 10000)) return;
     lastAttempt = Date.now();
     const writingRevision = revision;
+    const recordedDecisions = [...decisions.values()];
+    const strategiesUsed = [...new Set(recordedDecisions
+      .filter(decision => decision.primary && decision.strategyId)
+      .map(decision => decision.strategyId))];
     const data = {
-      schemaVersion: 4, session, localPlayerId, timeline, decisions: [...decisions.values()], cards: Object.fromEntries(cards),
+      schemaVersion: 4, session, localPlayerId, extensionVersion, strategiesUsed,
+      timeline, decisions: recordedDecisions, cards: Object.fromEntries(cards),
       actions: [...actions.values()].sort((a, b) => a.move - b.move ||
         a.id.localeCompare(b.id, undefined, { numeric: true })),
       result: gameResult()

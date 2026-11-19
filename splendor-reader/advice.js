@@ -1,5 +1,8 @@
 globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = null) => {
-  if (snapshot.gameState) return splendorRaceAdvice(snapshot, preferredTarget, deferredBuy);
+  if (snapshot.gameState) {
+    const advice = splendorRaceAdvice(snapshot, preferredTarget, deferredBuy);
+    return { ...advice, strategyId: "score-race" };
+  }
   const { graphics, counters, localPlayerId } = snapshot;
   const colors = ["C", "S", "E", "R", "O"];
   const spriteNumber = (graphic) => {
@@ -293,6 +296,6 @@ globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = nul
   if (paths[0]?.id !== preferredTarget && paths[1]?.id === preferredTarget && paths[1].score === paths[0].score) {
     [paths[0], paths[1]] = [paths[1], paths[0]];
   }
-  return { primary, buy, reservedBuy, take, reserve, paths: paths.slice(0, 2),
+  return { strategyId: "legacy-sprite", primary, buy, reservedBuy, take, reserve, paths: paths.slice(0, 2),
     forecastDepth: rivals.length, blindDecks: canReserve && bank.G !== null ? blindDecks : [], bank };
 };

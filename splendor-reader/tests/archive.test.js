@@ -17,7 +17,10 @@ function contextFor(file, overrides) {
 test("classifies wins, losses, ambiguous ties, and in-progress games for the local player", async () => {
   let payload;
   const { createSplendorArchive } = contextFor("session.js", {
-    chrome: { runtime: { sendMessage: async ({ data }) => { payload = data; return { saved: true }; } } }
+    chrome: { runtime: {
+      getManifest: () => ({ version: "0.11.8" }),
+      sendMessage: async ({ data }) => { payload = data; return { saved: true }; }
+    } }
   });
   const record = async (turnText, points) => {
     const session = createSplendorArchive("test-session");
@@ -95,4 +98,30 @@ test("commits the classified archive before removing the in-progress copy", asyn
   assert.equal(JSON.parse(files.get(final)).result.outcome, "win");
   await save(session, { ...data, result });
   assert.deepEqual([...files.keys()], [final]);
+});
+
+
+test("records the extension version and the strategies that actually issued suggestions", async () => {
+  let payload;
+  const context = contextFor("session.js", {
+    chrome: { runtime: {
+      getManifest: () => ({ version: "0.11.8" }),
+      sendMessage: async ({ data }) => { payload = data; return { saved: true }; }
+    } }
+  });
+  vm.runInContext(fs.readFileSync(require.resolve("../advice.js"), "utf8"), context);
+  context.splendorRaceAdvice = () => ({ primary: "buy", buy: { id: "card_1" }, paths: [] });
+  const archive = context.createSplendorArchive("strategy-test");
+  const snapshot = { move: 1, gameState: {} };
+  archive.recordDecision(snapshot, context.splendorAdvice(snapshot));
+  archive.recordDecision({ move: 2 }, { primary: null, paths: [], incomplete: "market", strategyId: "legacy-sprite" });
+  await archive.flush(true);
+  assert.equal(payload.extensionVersion, "0.11.8");
+  assert.deepEqual(Array.from(payload.strategiesUsed), ["score-race"]);
+  assert.equal(payload.decisions[0].strategyId, "score-race");
+  assert.equal(payload.decisions[1].strategyId, "legacy-sprite");
+
+  archive.recordDecision({ move: 3 }, { primary: "buy", buy: { id: "card_2" }, paths: [], strategyId: "legacy-sprite" });
+  await archive.flush(true);
+  assert.deepEqual(Array.from(payload.strategiesUsed), ["score-race", "legacy-sprite"]);
 });

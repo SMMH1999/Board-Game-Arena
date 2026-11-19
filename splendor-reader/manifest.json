@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Splendor Table Reader · Score Race",
-  "version": "0.11.7",
+  "version": "0.11.8",
   "description": "Read the displayed Splendor board on demand and export a local JSON snapshot.",
   "permissions": [
     "activeTab",
