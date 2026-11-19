@@ -193,14 +193,15 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
         recentlyReserved.has(rival.id) && (card.points >= 3 || bank.G > 0))))).map(card => card.id));
   const nobleDistance = (noble, discounts) => Object.entries(noble.cost).reduce((sum, [color, count]) =>
     sum + Math.max(0, count - discounts[color]), 0);
-  const nobleCategory = noble => {
+  const isThreeColorNoble = noble => {
     const costs = Object.values(noble.cost);
-    return costs.length === 3 && costs.every(count => count === 3) ? 1.38 : 1;
+    return costs.length === 3 && costs.every(count => count === 3);
   };
+  const nobleCategory = noble => isThreeColorNoble(noble) ? 1.38 : 1;
 
   function noblePriorities(state) {
     const priorities = Object.fromEntries(colors.map(color =>
-      [color, { color, appearances: 0, neededFor: 0, closeness: 0 }]));
+      [color, { color, appearances: 0, neededFor: 0, threeColorNeededFor: 0, closeness: 0 }]));
     for (const noble of state.nobles) {
       const value = nobleCategory(noble) * noble.points / (2 + nobleDistance(noble, state.discounts));
       for (const [color, count] of Object.entries(noble.cost)) {
@@ -209,6 +210,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
         priority.appearances++;
         if (state.discounts[color] < count) {
           priority.neededFor++;
+          if (isThreeColorNoble(noble)) priority.threeColorNeededFor++;
           priority.closeness += value;
         }
       }
@@ -334,34 +336,76 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
       score: line.score - Math.max(0, line.score - alternative.score) * 0.65 };
   }).filter(move => move.kind !== "reserve" || move.followup === move.id)
     .sort((a, b) => b.score - a.score);
-  const top = moves[0];
+  const coverageOrder = noblePriorities(initial);
+  const strategicOrder = coverageOrder.filter(priority => priority.neededFor > 0)
+    .sort((a, b) => b.threeColorNeededFor - a.threeColorNeededFor || b.neededFor - a.neededFor ||
+      b.closeness - a.closeness || colors.indexOf(a.color) - colors.indexOf(b.color));
+  const discountGroups = [];
+  let previousGroupWeight;
+  for (const priority of strategicOrder) {
+    if (previousGroupWeight !== priority.threeColorNeededFor) {
+      discountGroups.push([]);
+      previousGroupWeight = priority.threeColorNeededFor;
+    }
+    discountGroups.at(-1).push(priority.color);
+  }
+  const discountRank = new Map(strategicOrder.map((priority, index) => [priority.color, index]));
+
+  // Preserve economic ranking and resolve close opening draws using reachable discount cards.
+  const opening = !rivalStartsEnd && rivalThreat < 15 && developmentCount(own) < 2 && own.score <= 1;
+  function openingOptions(state) {
+    const nextStocks = legalDraws(state.bank).flatMap(take => applyTokens(state, take));
+    return state.cards.filter(card => discountRank.has(card.bonus)).flatMap(card => {
+      const payable = tokens => payment(card, { discounts: state.discounts, tokens }).G <= tokens.G;
+      const turns = payable(state.tokens) ? 1 : nextStocks.some(({ tokens }) => payable(tokens)) ? 2 : null;
+      return turns ? [{ id: card.id, rank: discountRank.get(card.bonus), turns }] : [];
+    }).sort((a, b) => a.turns - b.turns || a.rank - b.rank);
+  }
+  let top = moves[0];
+  if (opening && top?.kind === "take" && strategicOrder.length) {
+    const openingTolerance = 0.08;
+    const tied = moves.filter(move => move.kind === "take" && top.score - move.score <= openingTolerance)
+      .map(move => ({ move, target: openingOptions(move.state)[0] }));
+    tied.sort((a, b) => (a.target?.turns ?? 3) - (b.target?.turns ?? 3) ||
+      (a.target?.rank ?? colors.length) - (b.target?.rank ?? colors.length) ||
+      b.move.score - a.move.score);
+    top = tied[0].move;
+  }
   const buy = moves.find(move => move.kind === "buy") ?? null;
-  const take = moves.find(move => move.kind === "take") ?? null;
+  const take = top?.kind === "take" ? top : moves.find(move => move.kind === "take") ?? null;
   const reserve = moves.find(move => move.kind === "reserve" && move.score >= top.score - 1.5) ?? null;
   const reservedBuy = moves.find(move => move.kind === "buy" && move.reserved) ??
     roots.find(move => move.kind === "buy" && move.reserved) ?? null;
   const paths = top && top.state.score < 15 && !rivalStartsEnd ? routes(top.state) : [];
-  const chosenPath = paths.findIndex(path => path.id === top?.followup);
+  const openingPath = opening && top?.kind === "take" && !top.followup ? openingOptions(top.state)[0] : null;
+  const chosenPath = paths.findIndex(path => path.id === (top?.followup ?? openingPath?.id));
   if (chosenPath > 0) paths.unshift(...paths.splice(chosenPath, 1));
+  if (openingPath && paths[0]?.id === openingPath.id) paths[0].turns = openingPath.turns;
   const fallbackIndex = paths.findIndex(path => path.id === top?.fallback);
   if (fallbackIndex > 1) paths.splice(1, 0, ...paths.splice(fallbackIndex, 1));
-  const discountPriorities = noblePriorities(initial)
-    .map(({ color, appearances, neededFor }) => ({ color, appearances, neededFor }));
-  const nobleTarget = initial.nobles.map(noble => ({
-    id: noble.id,
-    needs: Object.fromEntries(Object.entries(noble.cost).flatMap(([color, count]) => {
+  const discountPriorities = coverageOrder.map(({ color, appearances, neededFor, threeColorNeededFor }) =>
+    ({ color, appearances, neededFor, threeColorNeededFor }));
+
+  const routeColor = cards.find(card => card.id === (top?.kind === "buy" ? top.id : paths[0]?.id))?.bonus;
+  const nobleTarget = initial.nobles.map(noble => {
+    const needs = Object.fromEntries(Object.entries(noble.cost).flatMap(([color, count]) => {
       const missing = count - own.discounts[color];
       return missing > 0 ? [[color, missing]] : [];
-    }))
-  })).map(noble => ({
-    ...noble,
-    distance: Object.values(noble.needs).reduce((sum, count) => sum + count, 0),
-    missingColors: Object.keys(noble.needs).filter(color => !cards.some(card => card.bonus === color)).length
-  })).filter(noble => noble.distance > 0).sort((a, b) =>
-    a.distance + a.missingColors - b.distance - b.missingColors)[0] ?? null;
+    }));
+    const needColors = Object.keys(needs);
+    const distance = Object.values(needs).reduce((sum, count) => sum + count, 0);
+    const missingColors = needColors.filter(color => !cards.some(card => card.bonus === color)).length;
+    const overlap = coverageOrder.reduce((sum, priority) => needs[priority.color] ?
+      sum + priority.threeColorNeededFor + priority.neededFor * 0.25 : sum, 0);
+    const relevance = needs[routeColor] ? 1.08 : 1;
+    const priority = nobleCategory(noble) * noble.points * relevance * (1 + overlap * 0.03) /
+      (2 + distance + missingColors);
+    return { id: noble.id, needs, distance, missingColors, priority };
+  }).filter(noble => noble.distance > 0).sort((a, b) =>
+    Number(b.distance === 1) - Number(a.distance === 1) || b.priority - a.priority || a.distance - b.distance)[0] ?? null;
   return { primary: top?.kind ?? null, buy, take, reserve, reservedBuy,
     paths: paths.slice(0, 2), bank, blindDecks: [], forecastDepth: 0,
-    race: { target, rivalThreat, orderKnown, nobleTarget, discountPriorities,
+    race: { target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
       removedTarget: publicReserves.find(record => record.card.id === preferredTarget)?.card.id ?? null,
       hiddenThreat: hiddenThreat.map(rival => rival.id), finishing: Boolean(top && top.state.score >= 15),
       ownNextScore: top?.state.score ?? own.score } };

@@ -64,6 +64,8 @@ globalThis.createSplendorArchive = (session) => {
       scores: Object.fromEntries(["buy", "take", "reserve"].map(kind => [kind, advice[kind]?.score ?? null])),
       targets: advice.paths.map(path => path.id),
       discountPriorities: advice.race?.discountPriorities ?? [],
+      discountGroups: advice.race?.discountGroups ?? [],
+      nobleTarget: advice.race?.nobleTarget?.id ?? null,
       threat: advice.race ? { visible: advice.race.rivalThreat, hidden: advice.race.hiddenThreat ?? [],
         orderKnown: advice.race.orderKnown, removedTarget: advice.race.removedTarget ?? null } : null
     };

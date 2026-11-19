@@ -165,6 +165,10 @@ globalThis.createSplendorGuide = () => {
           const coverage = advice.race.discountPriorities.map(({ color, appearances }) => `${colors[color]} ${appearances}`);
           details.push(`تعداد نوبل‌ها برای هر تخفیف: ${coverage.join("، ")}`);
         }
+        if (advice.race.discountGroups?.length) {
+          const groups = advice.race.discountGroups.map(group => group.map(color => colors[color]).join("، "));
+          details.push(`اولویت تخفیف: ${groups.join(" ← ")}`);
+        }
         if (advice.race.nobleTarget) {
           const needs = Object.entries(advice.race.nobleTarget.needs)
             .map(([color, count]) => `${count} ${colors[color]}`);
