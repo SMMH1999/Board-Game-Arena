@@ -79,6 +79,10 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
   const target = Math.max(finish, rivalThreat);
   const hiddenThreat = rivals.filter(rival => rival.score >= 9 &&
     (rival.reservedCount ?? Infinity) > publicReserves.filter(record => record.playerId === rival.id).length);
+  // A protected scoring card may finish the game before our engine pays back.
+  const reserveSprint = hiddenThreat.some(rival => rival.score >= finish - 5 &&
+    rival.tokens.G > 0 && ([...(snapshot.rivalEvents ?? []), ...(snapshot.gameState.events ?? [])]).some(event =>
+      event.playerId === rival.id && event.action === "buys" && event.source === "reserve"));
   const pressure = rivalThreat >= finish || hiddenThreat.length ? 1 : 0.65;
 
   const { moveOptions, legalDraws, applyTokens } = splendorClassic.transitions(rules);
@@ -202,7 +206,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     const end = state.score >= finish || rivalStartsEnd;
     if (end) return endValue(state, depth);
     const paths = routes(state);
-    const life = Math.max(0, 4 - depth);
+    const life = reserveSprint ? 0 : Math.max(0, 4 - depth);
     const score = (state.score - own.score) * (1.1 + pressure) +
       state.cardPoints * cardPointPremium + state.buying * life * 0.15;
     const options = (paths[0]?.score ?? 0) + (paths[1]?.score ?? 0) * tuning.fallbackWeight;
@@ -242,7 +246,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
       }), depth, 4);
       for (const move of frontier) {
         const finishTurn = move.state.score >= finish && !finishAtRisk(move.state) ? depth : Infinity;
-        const latePenalty = (depth - 1) * (rivalThreat >= finish ? 4 : hiddenThreat.length ? 1.65 : 0.75);
+        const latePenalty = (depth - 1) * (rivalThreat >= finish ? 4 : reserveSprint ? 3 : hiddenThreat.length ? 1.65 : 0.75);
         const value = move.value - latePenalty - (move.exposure ?? 0);
         if (finishTurn < winTurn || (finishTurn === winTurn && value > best)) {
           winTurn = finishTurn;
@@ -265,7 +269,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     const earlyPurchase = root.kind === "buy"
       ? 0.45 + (root.earnsNoble ? 0.65 : 0) + (root.reserved ? 0.35 : 0) + (root.id === deferredBuy ? 0.9 : 0)
       : 0;
-    return { ...root, followup, winTurn, score: best + 0.26 * root.value + (root.state.score - own.score) * 0.8 + fullBankAdjustment + earlyPurchase - reservationCost + (pairDenial ? 0.12 : 0) };
+    return { ...root, followup, winTurn, score: best + 0.26 * root.value + (root.state.score - own.score) * (reserveSprint ? 2 : 0.8) + fullBankAdjustment + earlyPurchase - reservationCost + (pairDenial ? 0.12 : 0) };
   }
   function roundPriority(state) {
     const visibleEnd = rivalStartsEnd || state.score >= finish ||
@@ -359,7 +363,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     Number(b.distance === 1) - Number(a.distance === 1) || b.priority - a.priority || a.distance - b.distance)[0] ?? null;
   return { primary: top?.kind ?? null, buy, take, reserve, reservedBuy,
     paths: paths.slice(0, 2), bank, blindDecks: initial.reserveCount < rules.reservation_limit ? [1, 2, 3].filter(level => Number(counts[`drawpile_counter_${level}`]) > 0) : [], forecastDepth: rivals.length,
-    race: { removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
+    race: { reserveSprint, removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
       removedTarget: publicReserves.find(record => record.card.id === preferredTarget)?.card.id ?? null,
       hiddenThreat: hiddenThreat.map(rival => rival.id), finishing: Boolean(top && top.state.score >= finish),
       projectedWinTurn: Number.isFinite(top?.winTurn) ? top.winTurn : null, responders: finishRivals.map(r => r.id),

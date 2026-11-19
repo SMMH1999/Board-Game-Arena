@@ -20,7 +20,7 @@ for (const turn of game.timeline) {
   const publicRivalReserves = (turn.publicRivalReserves ?? []).filter(r => game.cards[r.cardId])
     .map(r => ({ ...r, card: { ...game.cards[r.cardId], id: r.cardId } }));
   const result = splendorAdvice({
-    localPlayerId, roundOrder: turn.roundOrder, publicRivalReserves,
+    localPlayerId, rivalEvents: game.actions.filter(event => event.move <= turn.move).slice(-36), roundOrder: turn.roundOrder, publicRivalReserves,
     counters: Object.entries(turn.counters).map(([elementId, text]) => ({ elementId, text })),
     gameState: { cards, nobles: turn.nobles, players: turn.players }
   });
