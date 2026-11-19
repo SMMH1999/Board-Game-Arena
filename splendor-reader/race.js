@@ -1,4 +1,4 @@
-globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy = null) => {
+globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy = null, previousNobles = []) => {
   const colors = ["C", "S", "E", "R", "O"];
   const { rules, tuning } = splendorActiveStrategy;
   const { cardPointPremium } = tuning;
@@ -101,10 +101,34 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
   };
   const nobleCategory = noble => isThreeColorNoble(noble) ? 1.38 : 1;
 
+  const focusOrder = [...nobles].sort((a, b) =>
+    Number(previousNobles.includes(b.id)) - Number(previousNobles.includes(a.id)) ||
+    Number(isThreeColorNoble(b)) - Number(isThreeColorNoble(a)) ||
+    nobleDistance(a, own.discounts) - nobleDistance(b, own.discounts));
+  const focused = state => focusOrder.filter(n => state.nobles.includes(n)).slice(0, 2);
+  const demand = new Map(cards.map(card => [card.id, rivals.reduce((sum, rival) => {
+    if (!validStock(rival) || card.reserved) return sum;
+    const gap = Math.max(0, payment(card, rival).G - rival.tokens.G);
+    return sum + (gap === 0 ? 1 : rival.reservedCount !== 3 ? 1 / (1 + gap) : 0);
+  }, 0)]));
+  function protection(move) {
+    if (move.kind !== "reserve") return 0;
+    const card = cards.find(c => c.id === move.id);
+    if (card?.level !== 3 || !card.points) return 0;
+    const paid = payment(card, move.state);
+    const gap = Math.max(0, paid.G - move.state.tokens.G);
+    const cost = Object.values(paid).reduce((a,b) => a+b, 0);
+    const shortage = colors.reduce((sum, c) => sum + Math.max(0,
+      (card.cost[c] ?? 0) - move.state.discounts[c] - move.state.tokens[c] - move.state.bank[c]), 0);
+    if (cost > 10 || shortage > move.state.tokens.G) return 0;
+    return card.points * (card.points === 5 ? 1.4 : 1) * (0.3 + demand.get(card.id)) /
+      (1 + gap * 0.55 + cost * 0.1 + initial.reserveCount);
+  }
+
   function noblePriorities(state) {
     const priorities = Object.fromEntries(colors.map(color =>
       [color, { color, appearances: 0, neededFor: 0, threeColorNeededFor: 0, closeness: 0 }]));
-    for (const noble of state.nobles) {
+    for (const noble of focused(state)) {
       const rivalCanClaim = rivals.some(rival => validStock(rival) && nobleDistance(noble, rival.discounts) <= 1);
       const value = (rivalCanClaim ? 0.65 : 1) * nobleCategory(noble) * noble.points / (2 + nobleDistance(noble, state.discounts));
       for (const [color, count] of Object.entries(noble.cost)) {
@@ -123,7 +147,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
   }
 
   const initialDistances = new Map(initial.nobles.map(noble => [noble, nobleDistance(noble, initial.discounts)]));
-  const nobleProgress = state => state.nobles.reduce((sum, noble) => {
+  const nobleProgress = state => focused(state).reduce((sum, noble) => {
     const remaining = nobleDistance(noble, state.discounts);
     const steps = initialDistances.get(noble) - remaining;
     // A useful discount advances every still-available noble that needs it.
@@ -178,7 +202,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
       const oneDraw = netTotal <= rules.hand_token_limit_at_end && deficit <= Math.max(Math.min(3, distinct), pair);
       const turns = deficit === 0 ? 1 : oneDraw ? 2 : 1 + Math.max(2, Math.ceil(deficit / 3), colorBound);
       const exposed = !card.reserved && contested.has(card.id);
-      const risk = exposed ? contest.get(card.id).length / rivals.length : 0;
+      const risk = exposed ? demand.get(card.id) / rivals.length : 0;
       const score = (points * pressure + card.points * cardPointPremium +
         Math.min(progress, 4) * (1.2 - pressure) + nobleValue + 0.35) /
         (turns + 0.5 * deficit + Math.max(0, shortage - state.tokens.G) * 0.8 + risk * 0.7);
@@ -213,7 +237,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     const slack = colors.filter(color => state.tokens[color] > 0).length * 0.07 -
       Math.max(0, total(state.tokens) - 8) * 0.12;
     const delay = move.kind === "take" ? move.returned.length * 0.09 : 0;
-    return score + options + slack - delay + nobleProgress(state) * (rivalThreat >= finish ? 0.45 : 1);
+    return protection(move) + score + options + slack - delay + nobleProgress(state) * (rivalThreat >= finish ? 0.45 : 1);
   }
 
   // A shallow, bounded beam evaluates real payments, gold, reserve slots and returns.
@@ -269,7 +293,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     const earlyPurchase = root.kind === "buy"
       ? 0.45 + (root.earnsNoble ? 0.65 : 0) + (root.reserved ? 0.35 : 0) + (root.id === deferredBuy ? 0.9 : 0)
       : 0;
-    return { ...root, followup, winTurn, score: best + 0.26 * root.value + (root.state.score - own.score) * (reserveSprint ? 2 : 0.8) + fullBankAdjustment + earlyPurchase - reservationCost + (pairDenial ? 0.12 : 0) };
+    return { ...root, followup, winTurn, score: best + 0.26 * root.value + (root.state.score - own.score) * (reserveSprint ? 2 : 0.8) + fullBankAdjustment + earlyPurchase - reservationCost + protection(root) + (pairDenial ? 0.12 : 0) };
   }
   function roundPriority(state) {
     const visibleEnd = rivalStartsEnd || state.score >= finish ||
@@ -345,7 +369,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     ({ color, appearances, neededFor, threeColorNeededFor }));
 
   const routeColor = cards.find(card => card.id === (top?.kind === "buy" ? top.id : paths[0]?.id))?.bonus;
-  const nobleTarget = initial.nobles.map(noble => {
+  const nobleTarget = focused(initial).map(noble => {
     const needs = Object.fromEntries(Object.entries(noble.cost).flatMap(([color, count]) => {
       const missing = count - own.discounts[color];
       return missing > 0 ? [[color, missing]] : [];
@@ -363,7 +387,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     Number(b.distance === 1) - Number(a.distance === 1) || b.priority - a.priority || a.distance - b.distance)[0] ?? null;
   return { primary: top?.kind ?? null, buy, take, reserve, reservedBuy,
     paths: paths.slice(0, 2), bank, blindDecks: initial.reserveCount < rules.reservation_limit ? [1, 2, 3].filter(level => Number(counts[`drawpile_counter_${level}`]) > 0) : [], forecastDepth: rivals.length,
-    race: { reserveSprint, removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
+    race: { focusedNobles: focused(initial).map(n => n.id), reserveSprint, removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
       removedTarget: publicReserves.find(record => record.card.id === preferredTarget)?.card.id ?? null,
       hiddenThreat: hiddenThreat.map(rival => rival.id), finishing: Boolean(top && top.state.score >= finish),
       projectedWinTurn: Number.isFinite(top?.winTurn) ? top.winTurn : null, responders: finishRivals.map(r => r.id),

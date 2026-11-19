@@ -58,8 +58,8 @@ test("a close opening draw supports a reachable discount and the overlapping nob
   assert.equal(advice.paths[0].id, "card_1");
   assert.equal(advice.paths[0].turns, 2);
   assert.equal(advice.race.nobleTarget.id, "noble_6");
-  assert.deepEqual(advice.race.discountGroups, [["O", "S"], ["C", "E"], ["R"]]);
-  assert.deepEqual(advice.race.discountPriorities.map(item => item.appearances), [3, 2, 2, 2, 1]);
+  assert.deepEqual(advice.race.discountGroups, [["S", "O"], ["C", "E"]]);
+  assert.deepEqual(advice.race.discountPriorities.map(item => item.appearances), [2, 2, 1, 1]);
 
   const afterNobleIsTaken = makeAdvice({
     ...options, nobles: options.nobles.filter(item => item.id !== "noble_6")

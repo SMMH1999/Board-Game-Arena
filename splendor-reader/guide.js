@@ -2,6 +2,7 @@ globalThis.createSplendorGuide = () => {
   const colors = { C: "سفید", S: "آبی", E: "سبز", R: "قرمز", O: "سیاه", G: "طلا" };
   let plan;
   let preferredTarget;
+  let previousNobles = [];
   let previousBuy;
   let layer;
   const halos = new Map();
@@ -36,7 +37,7 @@ globalThis.createSplendorGuide = () => {
     if (opponent || /(?:game (?:is )?over|game has ended)/i.test(prompt) || (!ours && !plan)) return false;
     if (!plan && !pending) {
       const deferredBuy = previousBuy && previousBuy.move !== snapshot.move ? previousBuy.id : null;
-      const advice = splendorAdvice(snapshot, preferredTarget, deferredBuy);
+      const advice = splendorAdvice(snapshot, preferredTarget, deferredBuy, previousNobles);
       if (advice?.incomplete) {
         message.textContent = advice.incomplete === "market"
           ? "بازار هنوز کامل خوانده نشده است؛ پیشنهاد پس از تکمیل نمایش داده می‌شود."
@@ -44,6 +45,7 @@ globalThis.createSplendorGuide = () => {
         recordDecision?.(snapshot, advice);
         return true;
       }
+      if (advice?.race) previousNobles = advice.race.focusedNobles;
       if (advice?.paths.length) preferredTarget = advice.paths[0].id;
       if (advice) {
         plan = { advice, snapshot, previews: new Map() };
@@ -301,5 +303,5 @@ globalThis.createSplendorGuide = () => {
     return art.childElementCount ? preview : null;
   }
 
-  return { render, reset, clearTarget: () => { preferredTarget = null; previousBuy = null; } };
+  return { render, reset, clearTarget: () => { previousNobles = []; preferredTarget = null; previousBuy = null; } };
 };

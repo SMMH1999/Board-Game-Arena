@@ -13,6 +13,7 @@ const localPlayerId = game.localPlayerId ?? localId;
 if (!game.timeline.some(turn => turn.players.some(player => player.id === localPlayerId))) {
   throw new Error("Supply the recorded local player's ID for this archive.");
 }
+let focus = [];
 for (const turn of game.timeline) {
   if (turn.finished || turn.activePlayerId !== localPlayerId) continue;
   const cards = [...turn.market, ...turn.reserved].map(id =>
@@ -23,7 +24,8 @@ for (const turn of game.timeline) {
     localPlayerId, rivalEvents: game.actions.filter(event => event.move <= turn.move).slice(-36), roundOrder: turn.roundOrder, publicRivalReserves,
     counters: Object.entries(turn.counters).map(([elementId, text]) => ({ elementId, text })),
     gameState: { cards, nobles: turn.nobles, players: turn.players }
-  });
+  }, null, null, focus);
+  focus = result.race?.focusedNobles ?? focus;
   const selected = result[result.primary];
   console.log(JSON.stringify({ move: turn.move, players: turn.players.length, strategy: result.strategyId,
     action: result.primary, target: selected?.tokens ?? selected?.id, incomplete: result.incomplete }));

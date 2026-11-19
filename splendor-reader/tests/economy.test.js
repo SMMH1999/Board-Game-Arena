@@ -122,3 +122,11 @@ scenario("P05", () => {
     assert.equal(exposed.some(line => line.target === "target"), !reserved);
   }
 });
+
+test("protect a five-point market card the opponent can buy before our next draw", () => {
+  const prize = card("prize", "E", 5, { S:7, E:3 });
+  const s = state({ cards:[prize], discounts:{...zero,S:4,E:3},tokens:{...zero,S:2} });
+  const result = advice(s,[{id:"other",score:10,discounts:{...zero,S:7,E:3},reservedCount:0}]);
+  assert.equal(result.primary,"reserve");
+  assert.equal(result.reserve.id,"prize");
+});

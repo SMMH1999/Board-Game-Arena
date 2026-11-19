@@ -1,6 +1,6 @@
-globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = null) => {
+globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = null, previousNobles = []) => {
   if (snapshot.gameState) {
-    const advice = splendorRaceAdvice(snapshot, preferredTarget, deferredBuy);
+    const advice = splendorRaceAdvice(snapshot, preferredTarget, deferredBuy, previousNobles);
     return { ...advice, strategyId: splendorActiveStrategy.id + "@" + splendorActiveStrategy.version, mode: splendorActiveStrategy.mode };
   }
   const { graphics, counters, localPlayerId } = snapshot;
