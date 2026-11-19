@@ -4,7 +4,7 @@ globalThis.createSplendorGuide = () => {
   let preferredTarget;
   let previousNobles = [];
   let previousBuy;
-  let preferredColor = null;
+  let preferredColors = [];
   let layer;
   const halos = new Map();
   const nobleHalos = new Map();
@@ -49,7 +49,10 @@ globalThis.createSplendorGuide = () => {
     if (!plan && !pending) {
       colorChanged = false;
       const deferredBuy = previousBuy && previousBuy.move !== snapshot.move ? previousBuy.id : null;
-      const advice = splendorAdvice(snapshot, preferredTarget, deferredBuy, previousNobles, preferredColor);
+      const nobleTargets = (snapshot.gameState?.nobles ?? [])
+        .filter(noble => previousNobles.includes(noble.id));
+      previousNobles = nobleTargets.map(noble => noble.id);
+      const advice = splendorAdvice(snapshot, preferredTarget, deferredBuy, previousNobles, preferredColors);
       if (advice?.incomplete) {
         message.textContent = advice.incomplete === "market"
           ? "بازار هنوز کامل خوانده نشده است؛ پیشنهاد پس از تکمیل نمایش داده می‌شود."
@@ -60,6 +63,7 @@ globalThis.createSplendorGuide = () => {
       if (advice?.race) {
         previousNobles = advice.race.focusedNobles;
         recommended = advice.race.recommendedColors;
+      preferredColors = advice.race.preferredColors;
       }
       if (advice?.paths.length) preferredTarget = advice.paths[0].id;
       if (advice) {
@@ -245,11 +249,7 @@ globalThis.createSplendorGuide = () => {
   }
 
   function renderTargets(snapshot, doc, controls, refresh) {
-    const choices = [...new Set([preferredColor, ...recommended].filter(Boolean))].slice(0, 3);
-    for (const color of Object.keys(colors)) {
-      if (choices.length >= 2) break;
-      if (!choices.includes(color)) choices.push(color);
-    }
+    const choices = ["C", "S", "E", "R", "O"];
     if (controls.dataset.colors !== choices.join("")) {
       controls.dataset.colors = choices.join("");
       controls.replaceChildren();
@@ -257,11 +257,19 @@ globalThis.createSplendorGuide = () => {
         const label = document.createElement("label");
         label.className = "color-token";
         const radio = document.createElement("input");
-        radio.type = "radio";
-        radio.name = "preferred-color";
+        radio.type = "checkbox";
+        radio.name = "preferred-colors";
         radio.value = color;
         radio.addEventListener("change", () => {
-          preferredColor = color;
+          preferredColors = preferredColors.includes(color) ? preferredColors.filter(item => item !== color) : [...preferredColors, color].slice(-3);
+          if (preferredColors.length > 3) {
+            preferredColors = preferredColors.slice(-3);
+            radio.checked = false;
+            return;
+          }
+          if (preferredColors.length < 2) {
+            preferredColors = choices.slice(0, 2);
+          }
           colorChanged = true;
           refresh();
         });
@@ -274,7 +282,7 @@ globalThis.createSplendorGuide = () => {
         controls.append(label);
       }
     }
-    for (const radio of controls.querySelectorAll("input")) radio.checked = radio.value === preferredColor;
+    for (const radio of controls.querySelectorAll("input")) radio.checked = preferredColors.includes(radio.value);
 
     const visible = new Set((snapshot.gameState?.nobles ?? []).map(noble => noble.id));
     for (const id of previousNobles) {
@@ -360,5 +368,5 @@ globalThis.createSplendorGuide = () => {
     return art.childElementCount ? preview : null;
   }
 
-  return { render, renderTargets, reset, clearTarget: () => { previousNobles = []; recommended = []; preferredColor = null; colorChanged = false; preferredTarget = null; previousBuy = null; } };
+  return { render, renderTargets, reset, clearTarget: () => { previousNobles = []; recommended = []; preferredColors = []; colorChanged = false; preferredTarget = null; previousBuy = null; } };
 };

@@ -71,7 +71,7 @@ globalThis.createSplendorArchive = (session) => {
     const decision = {
       move: snapshot.move, primary: advice.primary, strategyId: advice.strategyId ?? null,
       ...(profileKey ? { strategyProfile: profileKey } : {}),
-      preferredColor: advice.race?.preferredColor ?? null,
+      preferredColors: advice.preferredColors ?? [],
       colorEconomy: advice.race?.colorEconomy ?? [],
       focusedNobles: advice.race?.focusedNobles ?? [],
       nobleClaim: choice?.nobleId ?? null, projectedWinTurn: advice.race?.projectedWinTurn ?? null,

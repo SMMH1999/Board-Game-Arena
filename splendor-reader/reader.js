@@ -135,6 +135,8 @@
 
         header strong { font-size:16px; }
         .color-token { display:inline-flex; align-items:center; gap:4px; margin:3px; accent-color:var(--gem); }
+        fieldset { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+        .color-token { display:inline-flex; align-items:center; gap:3px; }
         .color-token-disc { width:22px; height:22px; border-radius:50%; background:var(--gem); border:2px solid #ddd4ec; }
         .color-token[data-color="C"] { --gem:#eceef2; }
         .color-token[data-color="S"] { --gem:#639aff; }

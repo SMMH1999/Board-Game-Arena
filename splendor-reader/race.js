@@ -1,4 +1,4 @@
-globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy = null, previousNobles = [], preferredColor = null) => {
+globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy = null, previousNobles = [], preferredColors = []) => {
   const colors = ["C", "S", "E", "R", "O"];
   const { rules, tuning } = splendorActiveStrategy;
   const { cardPointPremium } = tuning;
@@ -167,7 +167,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
   const recommendedColors = colorEconomy.filter(entry => entry.weight > 0)
     .sort((a, b) => b.weight - a.weight).slice(0, 3).map(entry => entry.color);
   for (const entry of colorEconomy) {
-    if (entry.color === preferredColor) entry.weight += 0.5;
+    if (preferredColors.includes(entry.color)) entry.weight += 0.5;
   }
   const colorWeight = Object.fromEntries(colorEconomy.map(entry => [entry.color, entry.weight]));
   const initialDistances = new Map(initial.nobles.map(noble => [noble, nobleDistance(noble, initial.discounts)]));
@@ -413,7 +413,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     Number(b.distance === 1) - Number(a.distance === 1) || b.priority - a.priority || a.distance - b.distance)[0] ?? null;
   return { primary: top?.kind ?? null, buy, take, reserve, reservedBuy,
     paths: paths.slice(0, 2), bank, forecastDepth: rivals.length,
-    race: { colorEconomy, recommendedColors, preferredColor, focusedNobles: focused(initial).map(n => n.id), removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
+    race: { colorEconomy, recommendedColors, preferredColors, focusedNobles: focused(initial).map(n => n.id), removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
       removedTarget: publicReserves.find(record => record.card.id === preferredTarget)?.card.id ?? null,
       finishing: Boolean(top && top.state.score >= finish),
       projectedWinTurn: Number.isFinite(top?.winTurn) ? top.winTurn : null, responders: finishRivals.map(r => r.id),
