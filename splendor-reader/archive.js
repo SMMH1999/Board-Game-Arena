@@ -24,7 +24,11 @@ async function save(session, data) {
   }
 
   const games = await folder.getDirectoryHandle("games", { create: true });
-  const game = await games.getDirectoryHandle(session, { create: true });
+  const outcome = data.result?.finished ? data.result.outcome : "in_progress";
+  const group = { win: "wins", loss: "losses", in_progress: "in-progress", draw: "unclassified", unknown: "unclassified" };
+  const destination = Object.hasOwn(group, outcome) ? group[outcome] : "unclassified";
+  const category = await games.getDirectoryHandle(destination, { create: true });
+  const game = await category.getDirectoryHandle(session, { create: true });
   const file = await game.getFileHandle("game.json", { create: true });
   const writer = await file.createWritable();
   try {
@@ -34,5 +38,35 @@ async function save(session, data) {
     await writer.abort().catch(() => {});
     throw error;
   }
+  if (data.result?.finished) {
+    for (const previous of new Set(Object.values(group))) {
+      if (previous !== destination) await removePreviousArchive(games, previous, session);
+    }
+  }
   return { saved: true };
+}
+
+
+async function removePreviousArchive(games, previous, session) {
+  try {
+    const parent = await games.getDirectoryHandle(previous);
+    const game = await parent.getDirectoryHandle(session);
+    const file = await game.getFileHandle("game.json");
+    const existing = await (await file.getFile()).text();
+    let data;
+    try {
+      data = JSON.parse(existing);
+    } catch {
+      return;
+    }
+    if (data?.session !== session || !Array.isArray(data.timeline)) return;
+    await game.removeEntry("game.json");
+    try {
+      await parent.removeEntry(session);
+    } catch (error) {
+      if (error.name !== "InvalidModificationError") throw error;
+    }
+  } catch (error) {
+    if (error.name !== "NotFoundError") throw error;
+  }
 }

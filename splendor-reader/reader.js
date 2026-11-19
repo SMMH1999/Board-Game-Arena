@@ -104,14 +104,15 @@
     snapshot.publicRivalReserves = reserveTracker.observe(snapshot);
     const { capturedAt, ...state } = snapshot;
     const signature = JSON.stringify(state, (key, value) => key === "x" || key === "y" ? undefined : value);
+    let finalCheckpoint = false;
     if (signature !== previousSignature) {
       journal.observe(snapshot);
-      archive.observe(snapshot);
+      finalCheckpoint = archive.observe(snapshot) === true;
       history.push(snapshot);
       if (history.length > 150) history.shift();
       previousSignature = signature;
     }
-    archive.flush();
+    archive.flush(finalCheckpoint);
     renderOverlay(snapshot);
     return snapshot;
   }

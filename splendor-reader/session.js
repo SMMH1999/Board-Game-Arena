@@ -37,6 +37,7 @@ globalThis.createSplendorArchive = (session) => {
     ).map(item => [item.elementId, item.text]));
     const state = {
       move: snapshot.move, activePlayerId: snapshot.activePlayerId, finished,
+      ...(finished ? { resultText: snapshot.turnText.trim() } : {}),
       roundOrder: snapshot.roundOrder ?? null,
       publicRivalReserves: (snapshot.publicRivalReserves ?? []).map(record =>
         ({ playerId: record.playerId, cardId: record.card.id, move: record.move })),
@@ -53,6 +54,7 @@ globalThis.createSplendorArchive = (session) => {
     lastState = state;
     lastFingerprint = fingerprint;
     revision++;
+    return finished;
   }
 
   function recordDecision(snapshot, advice) {
@@ -76,6 +78,39 @@ globalThis.createSplendorArchive = (session) => {
     revision++;
   }
 
+  function gameResult() {
+    if (!lastState) return null;
+    const scores = lastState.players.map(({ id, name, score }) => ({ id, name, score }));
+    const result = { finished: lastState.finished, scores, outcome: "in_progress", winnerId: null };
+    if (!lastState.finished) return result;
+    result.outcome = "unknown";
+    if (!scores.some(player => player.id === localPlayerId)) return result;
+
+    const heading = lastState.resultText;
+    if (/game (?:was )?(?:abandoned|cancelled|canceled)|no winner/i.test(heading)) return result;
+    if (/\b(?:it's a (?:tie|draw)|ends in a (?:tie|draw)|draw|tie)[.!]?$/i.test(heading) &&
+        !/\bwins\b/i.test(heading)) {
+      result.outcome = "draw";
+      return result;
+    }
+
+    let winner;
+    const announced = /^(?:end of (?:the )?game|game (?:is )?over|game has ended)\s*[:–—-]\s*(.+?)\s+wins[.!]?$/i.exec(heading);
+    if (announced) {
+      const winners = scores.filter(player => player.name?.toLowerCase() === announced[1].trim().toLowerCase());
+      if (winners.length === 1) winner = winners[0];
+    } else if (scores.length > 1 && scores.every(player => Number.isInteger(player.score))) {
+      const high = Math.max(...scores.map(player => player.score));
+      const leaders = scores.filter(player => player.score === high);
+      if (high >= 15 && leaders.length === 1) winner = leaders[0];
+    }
+    if (winner) {
+      result.winnerId = winner.id;
+      result.outcome = winner.id === localPlayerId ? "win" : "loss";
+    }
+    return result;
+  }
+
   function flush(force = false) {
     if (pending) {
       forceAfterPending ||= force;
@@ -88,10 +123,7 @@ globalThis.createSplendorArchive = (session) => {
       schemaVersion: 4, session, localPlayerId, timeline, decisions: [...decisions.values()], cards: Object.fromEntries(cards),
       actions: [...actions.values()].sort((a, b) => a.move - b.move ||
         a.id.localeCompare(b.id, undefined, { numeric: true })),
-      result: lastState ? {
-        finished: lastState.finished,
-        scores: lastState.players.map(({ id, name, score }) => ({ id, name, score }))
-      } : null
+      result: gameResult()
     };
     pending = chrome.runtime.sendMessage({ type: "splendor-save", session, data })
       .then(response => {
