@@ -54,12 +54,14 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     return paid;
   }
 
+  const publicReserves = snapshot.publicRivalReserves ?? [];
   function rivalCeiling(rival, state) {
     let extra = 0;
     let bought = false;
     if (validStock(rival)) {
-      for (const card of state.cards) {
-        if (card.reserved || payment(card, rival).G > rival.tokens.G) continue;
+      const known = publicReserves.filter(record => record.playerId === rival.id).map(record => record.card);
+      for (const card of [...state.cards.filter(card => !card.reserved), ...known]) {
+        if (payment(card, rival).G > rival.tokens.G) continue;
         const discounts = { ...rival.discounts, [card.bonus]: rival.discounts[card.bonus] + 1 };
         const bonus = Math.max(0, ...state.nobles.filter(noble => eligible(noble, discounts)).map(noble => noble.points));
         if (card.points + bonus > extra) {
@@ -74,7 +76,8 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
   const rivalStartsEnd = rivals.some(rival => rival.score >= 15);
   const rivalThreat = Math.max(0, ...rivals.map(rival => rivalCeiling(rival, initial).score));
   const target = Math.max(15, rivalThreat);
-  const hiddenThreat = rivals.filter(rival => rival.score >= 9 && rival.reservedCount !== 0);
+  const hiddenThreat = rivals.filter(rival => rival.score >= 9 &&
+    (rival.reservedCount ?? Infinity) > publicReserves.filter(record => record.playerId === rival.id).length);
   const pressure = rivalThreat >= 15 || hiddenThreat.length ? 1 : 0.65;
 
   function moveOptions(state) {
@@ -180,8 +183,12 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     return results;
   }
 
+  const recentlyReserved = new Set((snapshot.rivalEvents ?? []).filter(event => event.action === "reserves")
+    .map(event => event.playerId));
   const contested = new Set(cards.filter(card => !card.reserved && rivals.some(rival =>
-    validStock(rival) && payment(card, rival).G <= rival.tokens.G)).map(card => card.id));
+    validStock(rival) && (payment(card, rival).G <= rival.tokens.G ||
+      (Number.isInteger(rival.reservedCount) && rival.reservedCount < 3 &&
+        recentlyReserved.has(rival.id) && (card.points >= 3 || bank.G > 0))))).map(card => card.id));
   function nobleFocus(state) {
     const focus = Object.fromEntries(colors.map(color => [color, 0]));
     for (const noble of state.nobles) {
@@ -266,9 +273,12 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     ...roots.filter(move => move.kind === "buy"),
     ...["take", "reserve"].flatMap(kind => roots.filter(move => move.kind === kind).slice(0, 6))
   ];
-  function bestContinuation(root) {
-    let frontier = [root];
-    let best = root.value;
+  function bestContinuation(root, blockedId = null) {
+    const starting = blockedId ? { ...root, state: {
+      ...root.state, cards: root.state.cards.filter(card => card.id !== blockedId)
+    } } : root;
+    let frontier = [starting];
+    let best = blockedId ? evaluate(starting, 1) : root.value;
     let followup;
     for (let depth = 2; depth <= 3 && frontier.length; depth++) {
       frontier = rank(frontier.flatMap(move => {
@@ -298,8 +308,15 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
       : 0;
     return { ...root, followup, score: best + 0.26 * root.value + fullBankAdjustment + earlyPurchase };
   }
-  const moves = candidates.map(bestContinuation)
-    .filter(move => move.kind !== "reserve" || move.followup === move.id)
+  const moves = candidates.map(root => {
+    const line = bestContinuation(root);
+    const risk = line.followup && contested.has(line.followup) &&
+      root.state.cards.some(card => card.id === line.followup && !card.reserved);
+    if (!risk) return line;
+    const alternative = bestContinuation(root, line.followup);
+    return { ...line, fallback: alternative.followup,
+      score: line.score - Math.max(0, line.score - alternative.score) * 0.65 };
+  }).filter(move => move.kind !== "reserve" || move.followup === move.id)
     .sort((a, b) => b.score - a.score);
   const top = moves[0];
   const buy = moves.find(move => move.kind === "buy") ?? null;
@@ -310,11 +327,27 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
   const paths = top && top.state.score < 15 && !rivalStartsEnd ? routes(top.state) : [];
   const chosenPath = paths.findIndex(path => path.id === top?.followup);
   if (chosenPath > 0) paths.unshift(...paths.splice(chosenPath, 1));
+  const fallbackIndex = paths.findIndex(path => path.id === top?.fallback);
+  if (fallbackIndex > 1) paths.splice(1, 0, ...paths.splice(fallbackIndex, 1));
   const nobleColors = colors.filter(color => earlyFocus[color] > 0)
     .sort((a, b) => earlyFocus[b] - earlyFocus[a]);
   const focusCutoff = earlyFocus[nobleColors[2]] ?? 0;
+  const nobleTarget = initial.nobles.map(noble => ({
+    id: noble.id,
+    needs: Object.fromEntries(Object.entries(noble.cost).flatMap(([color, count]) => {
+      const missing = count - own.discounts[color];
+      return missing > 0 ? [[color, missing]] : [];
+    }))
+  })).map(noble => ({
+    ...noble,
+    distance: Object.values(noble.needs).reduce((sum, count) => sum + count, 0),
+    missingColors: Object.keys(noble.needs).filter(color => !cards.some(card => card.bonus === color)).length
+  })).filter(noble => noble.distance > 0).sort((a, b) =>
+    a.distance + a.missingColors - b.distance - b.missingColors)[0] ?? null;
   return { primary: top?.kind ?? null, buy, take, reserve, reservedBuy,
     paths: paths.slice(0, 2), bank, blindDecks: [], forecastDepth: 0,
-    race: { target, rivalThreat, orderKnown, hiddenThreat: hiddenThreat.map(rival => rival.id), nobleColors: nobleColors.filter(color => earlyFocus[color] + 1e-9 >= focusCutoff), finishing: Boolean(top && top.state.score >= 15),
+    race: { target, rivalThreat, orderKnown, nobleTarget,
+      removedTarget: publicReserves.find(record => record.card.id === preferredTarget)?.card.id ?? null,
+      hiddenThreat: hiddenThreat.map(rival => rival.id), nobleColors: nobleColors.filter(color => earlyFocus[color] + 1e-9 >= focusCutoff), finishing: Boolean(top && top.state.score >= 15),
       ownNextScore: top?.state.score ?? own.score } };
 };

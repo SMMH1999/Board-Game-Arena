@@ -13,6 +13,7 @@
   let turnOrder = [];
   let firstPlayerId;
   let roundOrder;
+  let reserveTracker;
   const observedActions = new Map();
   const guide = createSplendorGuide();
 
@@ -44,6 +45,7 @@
       turnOrder = [];
       firstPlayerId = undefined;
       roundOrder = undefined;
+      reserveTracker = createSplendorReserveTracker();
       guide.clearTarget();
       archive = createSplendorArchive(new Date().toISOString().replace(/[^0-9]/g, "") + "-" + crypto.randomUUID());
       history = [];
@@ -99,6 +101,7 @@
     snapshot.rivalOrder = lastOwnTurn < 0 ? [] : previousCycle.slice(lastOwnTurn + 1);
     for (const event of snapshot.gameLog) observedActions.set(event.id, event);
     snapshot.rivalEvents = [...observedActions.values()].sort((a, b) => a.move - b.move).slice(-36);
+    snapshot.publicRivalReserves = reserveTracker.observe(snapshot);
     const { capturedAt, ...state } = snapshot;
     const signature = JSON.stringify(state, (key, value) => key === "x" || key === "y" ? undefined : value);
     if (signature !== previousSignature) {

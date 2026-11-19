@@ -15,6 +15,11 @@ globalThis.createSplendorGuide = () => {
 
   function render(snapshot, doc, message, recordDecision) {
     const prompt = snapshot.turnText ?? "";
+    if (/end of (?:the )?game|game over|game has ended/i.test(prompt)) {
+      reset();
+      message.textContent = "بازی به پایان رسید.";
+      return true;
+    }
     if (/^pay\b.*\bto buy\b/i.test(prompt)) {
       reset();
       message.textContent = "خرید در مرحلهٔ پرداخت است. پیشنهاد بعد از پایان پرداخت یا لغو خرید محاسبه می‌شود.";
@@ -156,7 +161,12 @@ globalThis.createSplendorGuide = () => {
       const details = [];
       if (advice.race) {
         details.push(`هدف امتیازی: ${advice.race.target}`);
-        if (advice.race.nobleColors?.length) details.push(`تخفیف‌های نوبل: ${advice.race.nobleColors.map(color => colors[color]).join("، ")}`);
+        if (advice.race.nobleTarget) {
+          const needs = Object.entries(advice.race.nobleTarget.needs)
+            .map(([color, count]) => `${count} ${colors[color]}`);
+          details.push(`تا نوبل هدف: ${needs.join("، ")} کارت تخفیف`);
+        }
+        if (advice.race.removedTarget) details.push("حریف کارت هدف قبلی را رزرو کرد؛ مسیر دوباره محاسبه شد");
         if (advice.race.finishing) details.push(`امتیاز پس از خرید: ${advice.race.ownNextScore}`);
         if (advice.race.hiddenThreat?.length) details.push("رزرو پنهان حریف می‌تواند پایان را جلو بیندازد");
         if (advice.race.rivalThreat >= 15) details.push(`تهدید قابل‌مشاهدهٔ حریف: ${advice.race.rivalThreat}`);

@@ -38,6 +38,8 @@ globalThis.createSplendorArchive = (session) => {
     const state = {
       move: snapshot.move, activePlayerId: snapshot.activePlayerId, finished,
       roundOrder: snapshot.roundOrder ?? null,
+      publicRivalReserves: (snapshot.publicRivalReserves ?? []).map(record =>
+        ({ playerId: record.playerId, cardId: record.card.id, move: record.move })),
       counters,
       market: game.cards.filter(card => !card.reserved).map(card => card.id).sort(),
       reserved: game.cards.filter(card => card.reserved).map(card => card.id).sort(),
@@ -62,7 +64,7 @@ globalThis.createSplendorArchive = (session) => {
       scores: Object.fromEntries(["buy", "take", "reserve"].map(kind => [kind, advice[kind]?.score ?? null])),
       targets: advice.paths.map(path => path.id),
       threat: advice.race ? { visible: advice.race.rivalThreat, hidden: advice.race.hiddenThreat ?? [],
-        orderKnown: advice.race.orderKnown } : null
+        orderKnown: advice.race.orderKnown, removedTarget: advice.race.removedTarget ?? null } : null
     };
     const prior = decisions.get(snapshot.move);
     if ((prior?.primary && decision.incomplete) || JSON.stringify(prior) === JSON.stringify(decision)) return;

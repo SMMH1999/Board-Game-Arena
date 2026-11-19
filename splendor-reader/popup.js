@@ -39,7 +39,7 @@ async function readTable() {
 
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["journal.js", "forecast.js", "race.js", "advice.js", "turn.js", "guide.js", "panel.js", "session.js", "table.js", "board-data.js", "reader.js"]
+      files: ["journal.js", "forecast.js", "race.js", "advice.js", "turn.js", "guide.js", "panel.js", "session.js", "table.js", "board-data.js", "reserve-tracker.js", "reader.js"]
     });
     const [{ result: session }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
