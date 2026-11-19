@@ -1,7 +1,7 @@
 globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = null) => {
   if (snapshot.gameState) {
     const advice = splendorRaceAdvice(snapshot, preferredTarget, deferredBuy);
-    return { ...advice, strategyId: "score-race" };
+    return { ...advice, strategyId: splendorActiveStrategy.id + "@" + splendorActiveStrategy.version, mode: splendorActiveStrategy.mode };
   }
   const { graphics, counters, localPlayerId } = snapshot;
   const colors = ["C", "S", "E", "R", "O"];

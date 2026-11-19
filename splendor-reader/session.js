@@ -4,6 +4,7 @@ globalThis.createSplendorArchive = (session) => {
   const actions = new Map();
   const cards = new Map();
   const decisions = new Map();
+  const strategyProfiles = new Map();
   let localPlayerId;
   let lastState;
   let lastFingerprint;
@@ -61,8 +62,16 @@ globalThis.createSplendorArchive = (session) => {
   function recordDecision(snapshot, advice) {
     if (snapshot.move == null) return;
     const choice = advice[advice.primary];
+    const profile = globalThis.splendorActiveStrategy;
+    let profileKey;
+    if (advice.primary && profile && advice.strategyId === profile.id + "@" + profile.version) {
+      profileKey = advice.strategyId + "/" + profile.source + "/" + Object.values(profile.tuning ?? {}).join("-");
+      strategyProfiles.set(profileKey, profile);
+    }
     const decision = {
       move: snapshot.move, primary: advice.primary, strategyId: advice.strategyId ?? null,
+      ...(profileKey ? { strategyProfile: profileKey } : {}),
+      nobleClaim: choice?.nobleId ?? null, projectedWinTurn: advice.race?.projectedWinTurn ?? null,
       incomplete: advice.incomplete ?? null,
       selection: choice ? choice.tokens ? { tokens: choice.tokens, returned: choice.returned } : { cardId: choice.id } : null,
       scores: Object.fromEntries(["buy", "take", "reserve"].map(kind => [kind, advice[kind]?.score ?? null])),
@@ -90,11 +99,8 @@ globalThis.createSplendorArchive = (session) => {
 
     const heading = lastState.resultText;
     if (/game (?:was )?(?:abandoned|cancelled|canceled)|no winner/i.test(heading)) return result;
-    if (/\b(?:it's a (?:tie|draw)|ends in a (?:tie|draw)|draw|tie)[.!]?$/i.test(heading) &&
-        !/\bwins\b/i.test(heading)) {
-      result.outcome = "draw";
-      return result;
-    }
+    const announcedTie = /\b(?:tie|draw)[.!]?$/i.test(heading) && !/\bwins\b/i.test(heading);
+    if (announcedTie) result.outcome = "draw";
 
     let winner;
     const announced = /^(?:end of (?:the )?game|game (?:is )?over|game has ended)\s*[:–—-]\s*(.+?)\s+wins[.!]?$/i.exec(heading);
@@ -103,8 +109,18 @@ globalThis.createSplendorArchive = (session) => {
       if (winners.length === 1) winner = winners[0];
     } else if (scores.length > 1 && scores.every(player => Number.isInteger(player.score))) {
       const high = Math.max(...scores.map(player => player.score));
-      const leaders = scores.filter(player => player.score === high);
-      if (high >= 15 && leaders.length === 1) winner = leaders[0];
+      const ranked = lastState.players.map(player => {
+        const discounts = ["C","S","E","R","O"].map(color => player.discounts?.[color]);
+        return { id: player.id, score: player.score, cards: discounts.every(Number.isInteger)
+          ? discounts.reduce((sum, count) => sum + count, 0) : null };
+      });
+      const leaders = splendorClassic.leaders(ranked);
+      if (high >= 15 && leaders.length > 1) {
+        result.winnerIds = leaders.map(player => player.id);
+        result.outcome = result.winnerIds.includes(localPlayerId) ? "win" : "loss";
+        return result;
+      }
+      if (!announcedTie && high >= 15 && leaders.length === 1) winner = leaders[0];
     }
     if (winner) {
       result.winnerId = winner.id;
@@ -127,6 +143,7 @@ globalThis.createSplendorArchive = (session) => {
       .map(decision => decision.strategyId))];
     const data = {
       schemaVersion: 4, session, localPlayerId, extensionVersion, strategiesUsed,
+      strategyProfiles: Object.fromEntries(strategyProfiles),
       timeline, decisions: recordedDecisions, cards: Object.fromEntries(cards),
       actions: [...actions.values()].sort((a, b) => a.move - b.move ||
         a.id.localeCompare(b.id, undefined, { numeric: true })),

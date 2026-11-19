@@ -10,6 +10,7 @@ function contextFor(file, overrides) {
     chrome: { runtime: { onInstalled: listeners, onMessage: listeners } },
     ...overrides
   });
+  vm.runInContext(fs.readFileSync(require.resolve("../classic.js"), "utf8"), context);
   vm.runInContext(fs.readFileSync(require.resolve(`../${file}`), "utf8"), context);
   return context;
 }
@@ -110,6 +111,7 @@ test("records the extension version and the strategies that actually issued sugg
     } }
   });
   vm.runInContext(fs.readFileSync(require.resolve("../advice.js"), "utf8"), context);
+  context.splendorActiveStrategy = { id: "optimal", version: "1", mode: "optimal-economy", source: "bundled", tuning: { fallbackWeight: 0.42 } };
   context.splendorRaceAdvice = () => ({ primary: "buy", buy: { id: "card_1" }, paths: [] });
   const archive = context.createSplendorArchive("strategy-test");
   const snapshot = { move: 1, gameState: {} };
@@ -117,11 +119,12 @@ test("records the extension version and the strategies that actually issued sugg
   archive.recordDecision({ move: 2 }, { primary: null, paths: [], incomplete: "market", strategyId: "legacy-sprite" });
   await archive.flush(true);
   assert.equal(payload.extensionVersion, "0.11.8");
-  assert.deepEqual(Array.from(payload.strategiesUsed), ["score-race"]);
-  assert.equal(payload.decisions[0].strategyId, "score-race");
+  assert.deepEqual(Array.from(payload.strategiesUsed), ["optimal@1"]);
+  assert.equal(payload.decisions[0].strategyId, "optimal@1");
   assert.equal(payload.decisions[1].strategyId, "legacy-sprite");
+  assert.equal(payload.strategyProfiles[payload.decisions[0].strategyProfile].tuning.fallbackWeight, 0.42);
 
   archive.recordDecision({ move: 3 }, { primary: "buy", buy: { id: "card_2" }, paths: [], strategyId: "legacy-sprite" });
   await archive.flush(true);
-  assert.deepEqual(Array.from(payload.strategiesUsed), ["score-race", "legacy-sprite"]);
+  assert.deepEqual(Array.from(payload.strategiesUsed), ["optimal@1", "legacy-sprite"]);
 });

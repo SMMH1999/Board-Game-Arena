@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+require("../classic.js");
+globalThis.splendorActiveStrategy = require("../strategies/splendor_strategy_codex.json");
 require("../race.js");
 
 const zero = { C: 0, S: 0, E: 0, R: 0, O: 0, G: 0 };
@@ -112,7 +114,7 @@ test("bank the points on an affordable reserve before preparing another purchase
   assert.equal(advice.race.immediatePoints, 4);
 });
 
-test("an affordable card counts the noble points it claims in the same turn", () => {
+test("secure the exposed scoring card before the protected noble-winning purchase", () => {
   const advice = makeAdvice({
     own: player("own", 8, { C: 2 }, { O: 3, C: 4 }, 1),
     rivals: [player("rival", 8)],
@@ -124,8 +126,9 @@ test("an affordable card counts the noble points it claims in the same turn", ()
   });
 
   assert.equal(advice.primary, "buy");
-  assert.equal(advice.buy.id, "card_65");
-  assert.equal(advice.race.immediatePoints, 4);
+  assert.equal(advice.buy.id, "card_17");
+  assert.equal(advice.take?.state.score ?? 8, 8);
+  assert.equal(advice.race.projectedWinTurn, 3);
 });
 
 test("take fewer immediate points if the purchase blocks an opponent's projected winning finish", () => {

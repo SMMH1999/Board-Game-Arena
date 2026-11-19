@@ -1,6 +1,7 @@
 const input = document.querySelector("#directory");
 const status = document.querySelector("#status");
 input.addEventListener("change", async () => {
+  const bundled = await bundledStrategy();
   const strategies = [];
   let skipped = 0;
   for (const file of input.files) {
@@ -8,14 +9,14 @@ input.addEventListener("change", async () => {
     try {
       if (file.size > 100000 || strategies.length >= 30) throw new Error();
       const definition = JSON.parse(await file.text());
-      if (!definition || typeof definition !== "object" || Array.isArray(definition)) throw new Error();
+      if (!compatibleStrategy(definition, bundled)) throw new Error();
       strategies.push({ name: file.webkitRelativePath || file.name, definition });
     } catch {
       skipped++;
     }
   }
   if (!strategies.length) {
-    status.textContent = "فایل JSON قابل‌خواندن پیدا نشد.";
+    status.textContent = "راهبرد سازگار با نسخهٔ اقتصاد بهینه در این پوشه پیدا نشد.";
     return;
   }
   try {

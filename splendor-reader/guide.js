@@ -76,7 +76,7 @@ globalThis.createSplendorGuide = () => {
     if (advice.buy || advice.take || advice.reserve) {
       const hint = document.createElement("p");
       hint.className = "return";
-      hint.textContent = "برای این نوبت یکی از گزینه‌ها را انتخاب کن.";
+      hint.textContent = advice.mode === "optimal-economy" ? "اقتصاد بهینه · برای این نوبت یک حرکت انتخاب کن." : "برای این نوبت یکی از گزینه‌ها را انتخاب کن.";
       message.append(hint);
     }
 
@@ -169,7 +169,11 @@ globalThis.createSplendorGuide = () => {
           const groups = advice.race.discountGroups.map(group => group.map(color => colors[color]).join("، "));
           details.push(`اولویت تخفیف: ${groups.join(" ← ")}`);
         }
-        if (advice.race.nobleTarget) {
+        const claim = plan.snapshot.gameState?.nobles.find(n => n.id === advice[primary]?.nobleId);
+        if (claim) {
+          const costs = Object.entries(claim.cost).map(([color, count]) => count + " " + colors[color]);
+          details.push("نوبل این نوبت با تخفیف‌های " + costs.join("، "));
+        } else if (advice.race.nobleTarget) {
           const needs = Object.entries(advice.race.nobleTarget.needs)
             .map(([color, count]) => `${count} ${colors[color]}`);
           details.push(`تا نوبل هدف: ${needs.join("، ")} کارت تخفیف`);
