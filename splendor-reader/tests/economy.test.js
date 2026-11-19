@@ -130,3 +130,13 @@ test("protect a five-point market card the opponent can buy before our next draw
   assert.equal(result.primary,"reserve");
   assert.equal(result.reserve.id,"prize");
 });
+
+test("a shared noble color and a payable reserve cost reinforce the same bonus", () => {
+  const s = state({cards:[card("target","C",4,{S:7},true)], reserveCount:1,
+    nobles:[noble("a",{C:3,S:3,E:3}),noble("b",{S:3,R:3,O:3})]});
+  const blue = advice(s).race.colorEconomy.find(entry => entry.color === "S");
+  assert.equal(blue.nobleNeed,2);
+  assert.equal(blue.weight,1);
+  s.discounts = {...zero,S:7};
+  assert.equal(advice(s).race.colorEconomy.find(entry => entry.color === "S").weight,0);
+});

@@ -101,11 +101,6 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
   };
   const nobleCategory = noble => isThreeColorNoble(noble) ? 1.38 : 1;
 
-  const focusOrder = [...nobles].sort((a, b) =>
-    Number(previousNobles.includes(b.id)) - Number(previousNobles.includes(a.id)) ||
-    Number(isThreeColorNoble(b)) - Number(isThreeColorNoble(a)) ||
-    nobleDistance(a, own.discounts) - nobleDistance(b, own.discounts));
-  const focused = state => focusOrder.filter(n => state.nobles.includes(n)).slice(0, 2);
   const demand = new Map(cards.map(card => [card.id, rivals.reduce((sum, rival) => {
     if (!validStock(rival) || card.reserved) return sum;
     const gap = Math.max(0, payment(card, rival).G - rival.tokens.G);
@@ -146,6 +141,36 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
       .sort((a, b) => b.appearances - a.appearances || b.neededFor - a.neededFor || b.closeness - a.closeness);
   }
 
+  // Rank permanent bonuses for this turn. Each card counts once per unpaid color.
+  const colorEconomy = colors.map(color => {
+
+    let marketNeed = 0;
+    for (const card of cards) {
+      if (!(card.cost[color] > own.discounts[color])) continue;
+      const gap = Math.max(0, payment(card, own).G - own.tokens.G);
+      const exposure = card.reserved ? 0 : demand.get(card.id);
+      marketNeed += (1 + card.points / 5) * (card.reserved ? 2 : 1) /
+        ((1 + gap / 3) * (1 + exposure / 2));
+    }
+    return { color, nobleNeed: 0, marketNeed, weight: 0 };
+  });
+  const alignment = noble => colorEconomy.reduce((sum, entry) =>
+    sum + (noble.cost[entry.color] > own.discounts[entry.color] ? entry.marketNeed : 0), 0);
+  const focusOrder = [...nobles].sort((a, b) =>
+    Number(previousNobles.includes(b.id)) - Number(previousNobles.includes(a.id)) ||
+    Number(isThreeColorNoble(b)) - Number(isThreeColorNoble(a)) ||
+    nobleDistance(a, own.discounts) - nobleDistance(b, own.discounts) || alignment(b) - alignment(a));
+  const focused = state => focusOrder.filter(n => state.nobles.includes(n)).slice(0, 2);
+  for (const entry of colorEconomy) {
+    entry.nobleNeed = focused(initial).filter(n => n.cost[entry.color] > own.discounts[entry.color]).length;
+  }
+  for (const [metric, share] of [["nobleNeed", tuning.nobleColorWeight], ["marketNeed", tuning.marketColorWeight]]) {
+    const ranked = colorEconomy.filter(entry => entry[metric] > 0)
+      .sort((a, b) => b[metric] - a[metric] ||
+        b.marketNeed - a.marketNeed || b.nobleNeed - a.nobleNeed).slice(0, 3);
+    for (const entry of ranked) entry.weight += share * entry[metric] / ranked[0][metric];
+  }
+  const colorWeight = Object.fromEntries(colorEconomy.map(entry => [entry.color, entry.weight]));
   const initialDistances = new Map(initial.nobles.map(noble => [noble, nobleDistance(noble, initial.discounts)]));
   const nobleProgress = state => focused(state).reduce((sum, noble) => {
     const remaining = nobleDistance(noble, state.discounts);
@@ -177,9 +202,9 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
         (other.cost[card.bonus] ?? 0) > state.discounts[card.bonus]);
       const progress = unlocks.reduce((sum, other) => sum + (other.points ? 1 : 0.35), 0);
       const priority = priorities[card.bonus];
-      const nobleValue = priority?.neededFor
+      const nobleValue = colorWeight[card.bonus] * 0.45 + (priority?.neededFor
         ? priority.neededFor * 0.22 + priority.appearances * 0.05 + priority.closeness * 0.95
-        : 0;
+        : 0);
       const net = colors.map(color => Math.max(0, (card.cost[color] ?? 0) - state.discounts[color]));
       return { card, points, progress, nobleValue, net, netTotal: net.reduce((sum, v) => sum + v, 0) };
     });
@@ -237,7 +262,9 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     const slack = colors.filter(color => state.tokens[color] > 0).length * 0.07 -
       Math.max(0, total(state.tokens) - 8) * 0.12;
     const delay = move.kind === "take" ? move.returned.length * 0.09 : 0;
-    return protection(move) + score + options + slack - delay + nobleProgress(state) * (rivalThreat >= finish ? 0.45 : 1);
+    const economyGain = colorEconomy.reduce((sum, entry) => sum + entry.weight *
+      Math.min(1, state.discounts[entry.color] - own.discounts[entry.color]), 0);
+    return economyGain * life / 3 + protection(move) + score + options + slack - delay + nobleProgress(state) * (rivalThreat >= finish ? 0.45 : 1);
   }
 
   // A shallow, bounded beam evaluates real payments, gold, reserve slots and returns.
@@ -387,7 +414,7 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     Number(b.distance === 1) - Number(a.distance === 1) || b.priority - a.priority || a.distance - b.distance)[0] ?? null;
   return { primary: top?.kind ?? null, buy, take, reserve, reservedBuy,
     paths: paths.slice(0, 2), bank, blindDecks: initial.reserveCount < rules.reservation_limit ? [1, 2, 3].filter(level => Number(counts[`drawpile_counter_${level}`]) > 0) : [], forecastDepth: rivals.length,
-    race: { focusedNobles: focused(initial).map(n => n.id), reserveSprint, removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
+    race: { colorEconomy, focusedNobles: focused(initial).map(n => n.id), reserveSprint, removalScenarios: Array.from(removalScenarios, ([target, rivals]) => ({ target, rivals })), target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
       removedTarget: publicReserves.find(record => record.card.id === preferredTarget)?.card.id ?? null,
       hiddenThreat: hiddenThreat.map(rival => rival.id), finishing: Boolean(top && top.state.score >= finish),
       projectedWinTurn: Number.isFinite(top?.winTurn) ? top.winTurn : null, responders: finishRivals.map(r => r.id),
