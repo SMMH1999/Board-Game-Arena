@@ -86,13 +86,6 @@ globalThis.splendorClassic.transitions = rules => {
           });
         }
       }
-      for (const level of [1, 2, 3].filter(level => state.decks[level] > 0)) {
-        for (const { tokens, returned } of stock) {
-          moves.push({ kind: "reserve", id: `drawpile${level}`, gold, returned,
-            state: { ...state, decks: { ...state.decks, [level]: state.decks[level] - 1 },
-              reserveCount: state.reserveCount + 1, tokens, bank: exchangeBank(state, tokens) } });
-        }
-      }
     }
     return moves.flatMap(splendorClassic.claims);
   }

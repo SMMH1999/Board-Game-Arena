@@ -140,3 +140,16 @@ test("a shared noble color and a payable reserve cost reinforce the same bonus",
   s.discounts = {...zero,S:7};
   assert.equal(advice(s).race.colorEconomy.find(entry => entry.color === "S").weight,0);
 });
+
+test("unknown deck tops are excluded and a preferred color adds weight", () => {
+  const s = state({ decks: { 1: 36, 2: 26, 3: 16 } });
+  assert.ok(moveOptions(s).every(move => move.kind !== "reserve"));
+  const counters = Object.entries(s.bank).map(([color, count]) =>
+    ({ elementId: "coincounter_" + color, text: String(count) }));
+  counters.push({ elementId: "spl_playerboard_gemcount", text: "0/10" });
+  const snapshot = { localPlayerId: "me", counters,
+    gameState: { cards: [], nobles: [], players: [{ id: "me", ...s }] } };
+  const result = splendorAdvice(snapshot, null, null, [], "E");
+  assert.equal(result.race.colorEconomy.find(entry => entry.color === "E").weight, 0.5);
+  assert.deepEqual(result.race.recommendedColors, []);
+});

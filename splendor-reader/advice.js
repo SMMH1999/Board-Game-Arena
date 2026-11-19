@@ -1,6 +1,6 @@
-globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = null, previousNobles = []) => {
+globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = null, previousNobles = [], preferredColor = null) => {
   if (snapshot.gameState) {
-    const advice = splendorRaceAdvice(snapshot, preferredTarget, deferredBuy, previousNobles);
+    const advice = splendorRaceAdvice(snapshot, preferredTarget, deferredBuy, previousNobles, preferredColor);
     return { ...advice, strategyId: splendorActiveStrategy.id + "@" + splendorActiveStrategy.version, mode: splendorActiveStrategy.mode };
   }
   const { graphics, counters, localPlayerId } = snapshot;
@@ -259,14 +259,7 @@ globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = nul
         Math.max(0, inventory - 7) * 0.23
     };
   }).sort((a, b) => b.score - a.score) : [];
-  const reserveCard = reserveChoices[0];
-  const blindDecks = [1, 2, 3].filter(level =>
-    /^[1-9]\d*$/.test(counters.find(item => item.elementId === `drawpile_counter_${level}`)?.text ?? ""));
-  const reserveId = reserveCard?.id ?? (blindDecks.length ? `drawpile${blindDecks[0]}` : null);
-  const reserve = canReserve && reserveId && bank.G !== null
-    ? reserveCard ?? { id: reserveId, score: goldAvailable ? tempo.reserveGold : tempo.reserve,
-      gold: goldAvailable, returned: reserveReturns, plan: [] }
-    : null;
+  const reserve = reserveChoices[0] ?? null;
 
   const buys = purchases.slice(0, 6).map(card => {
     const remaining = { ...holdings };
@@ -297,5 +290,5 @@ globalThis.splendorAdvice = (snapshot, preferredTarget = null, deferredBuy = nul
     [paths[0], paths[1]] = [paths[1], paths[0]];
   }
   return { strategyId: "legacy-sprite", primary, buy, reservedBuy, take, reserve, paths: paths.slice(0, 2),
-    forecastDepth: rivals.length, blindDecks: canReserve && bank.G !== null ? blindDecks : [], bank };
+    forecastDepth: rivals.length, bank };
 };

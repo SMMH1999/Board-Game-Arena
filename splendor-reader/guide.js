@@ -4,6 +4,7 @@ globalThis.createSplendorGuide = () => {
   let preferredTarget;
   let previousNobles = [];
   let previousBuy;
+  let preferredColor = null;
   let layer;
   const halos = new Map();
 
@@ -37,7 +38,7 @@ globalThis.createSplendorGuide = () => {
     if (opponent || /(?:game (?:is )?over|game has ended)/i.test(prompt) || (!ours && !plan)) return false;
     if (!plan && !pending) {
       const deferredBuy = previousBuy && previousBuy.move !== snapshot.move ? previousBuy.id : null;
-      const advice = splendorAdvice(snapshot, preferredTarget, deferredBuy, previousNobles);
+      const advice = splendorAdvice(snapshot, preferredTarget, deferredBuy, previousNobles, preferredColor);
       if (advice?.incomplete) {
         message.textContent = advice.incomplete === "market"
           ? "بازار هنوز کامل خوانده نشده است؛ پیشنهاد پس از تکمیل نمایش داده می‌شود."
@@ -80,6 +81,35 @@ globalThis.createSplendorGuide = () => {
       hint.className = "return";
       hint.textContent = advice.mode === "optimal-economy" ? "اقتصاد بهینه · برای این نوبت یک حرکت انتخاب کن." : "برای این نوبت یکی از گزینه‌ها را انتخاب کن.";
       message.append(hint);
+    }
+
+    if (advice.race) {
+      const summary = document.createElement("p");
+      const targets = advice.race.recommendedColors.map(color => colors[color]);
+      summary.textContent = targets.length ? `رنگ‌های هدف اقتصاد پایه · ${targets.join("، ")}` : "رنگ هدف اقتصاد پایه هنوز مشخص نیست.";
+      message.append(summary);
+      const label = document.createElement("label");
+      label.textContent = "ترجیح رنگ ";
+      const select = document.createElement("select");
+      select.add(new Option("خودکار", ""));
+      for (const [color, name] of Object.entries(colors)) {
+        if (color !== "G") select.add(new Option(name, color));
+      }
+      select.value = preferredColor ?? "";
+      select.disabled = pending || !ours;
+      select.addEventListener("change", () => {
+        preferredColor = select.value || null;
+        reset();
+        render(snapshot, doc, message, recordDecision);
+      });
+      label.append(select);
+      message.append(label);
+      for (const id of advice.race.focusedNobles) {
+        const element = doc.getElementById(id);
+        if (!element) continue;
+        visibleHalos.add(id);
+        drawHalo(element, false, id, "#ffd166");
+      }
     }
 
     function addRow(kind, label, items, returned = []) {
@@ -185,7 +215,6 @@ globalThis.createSplendorGuide = () => {
           details.push(`امتیاز همین نوبت: +${advice.race.immediatePoints}`);
         }
         if (advice.race.finishing) details.push(`امتیاز پس از خرید: ${advice.race.ownNextScore}`);
-        if (advice.race.hiddenThreat?.length) details.push("رزرو پنهان حریف می‌تواند پایان را جلو بیندازد");
         if (advice.race.rivalThreat >= 15) details.push(`تهدید قابل‌مشاهدهٔ حریف: ${advice.race.rivalThreat}`);
       }
       if (paths[0]) details.push(`هدف خرید: ${cardLabel(paths[0].id)}`);
@@ -225,9 +254,6 @@ globalThis.createSplendorGuide = () => {
       }
       message.append(recent);
     }
-    const blind = (advice.blindDecks ?? []).map(level => `drawpile${level}`)
-      .filter(id => id !== advice.reserve?.id);
-    if (blind.length) addRow("blind", "رزرو کارت ناشناخته از دسته", blind.map(cardItem));
     for (const [id, halo] of halos) {
       if (!visibleHalos.has(id)) {
         halo.remove();
@@ -238,7 +264,7 @@ globalThis.createSplendorGuide = () => {
     return true;
   }
 
-  function drawHalo(element, done, id) {
+  function drawHalo(element, done, id, highlight) {
     const rect = element.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const frame = element.ownerDocument.defaultView.frameElement;
@@ -257,7 +283,7 @@ globalThis.createSplendorGuide = () => {
         });
       }
     }
-    const color = done ? "#ff596d" : "#ff4ff2";
+    const color = highlight ?? (done ? "#ff596d" : "#ff4ff2");
     halo.style.cssText = `position:absolute;left:${(bounds?.left ?? 0) + rect.left * sx - 8}px;top:${(bounds?.top ?? 0) + rect.top * sy - 8}px;width:${rect.width * sx + 16}px;height:${rect.height * sy + 16}px;box-sizing:border-box;border:4px solid ${color};border-radius:${id.startsWith("coinpile_") ? "50%" : "12px"};box-shadow:0 0 0 2px #26132d,0 0 18px 4px ${color}`;
   }
 

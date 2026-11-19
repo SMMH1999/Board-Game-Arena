@@ -71,6 +71,7 @@ globalThis.createSplendorArchive = (session) => {
     const decision = {
       move: snapshot.move, primary: advice.primary, strategyId: advice.strategyId ?? null,
       ...(profileKey ? { strategyProfile: profileKey } : {}),
+      preferredColor: advice.race?.preferredColor ?? null,
       colorEconomy: advice.race?.colorEconomy ?? [],
       focusedNobles: advice.race?.focusedNobles ?? [],
       nobleClaim: choice?.nobleId ?? null, projectedWinTurn: advice.race?.projectedWinTurn ?? null,
@@ -82,7 +83,7 @@ globalThis.createSplendorArchive = (session) => {
       discountGroups: advice.race?.discountGroups ?? [],
       nobleTarget: advice.race?.nobleTarget?.id ?? null,
       immediatePoints: advice.race?.immediatePoints ?? null,
-      threat: advice.race ? { visible: advice.race.rivalThreat, hidden: advice.race.hiddenThreat ?? [],
+      threat: advice.race ? { visible: advice.race.rivalThreat,
         orderKnown: advice.race.orderKnown, removedTarget: advice.race.removedTarget ?? null } : null
     };
     const prior = decisions.get(snapshot.move);
