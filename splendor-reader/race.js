@@ -154,7 +154,8 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     Number(previousNobles.includes(b.id)) - Number(previousNobles.includes(a.id)) ||
     Number(isThreeColorNoble(b)) - Number(isThreeColorNoble(a)) ||
     nobleDistance(a, own.discounts) - nobleDistance(b, own.discounts) || alignment(b) - alignment(a));
-  const focused = state => focusOrder.filter(n => state.nobles.includes(n)).slice(0, 2);
+  const targetCount = players.length === 4 ? 3 : 2;
+  const focused = state => focusOrder.filter(n => state.nobles.includes(n)).slice(0, targetCount);
   for (const entry of colorEconomy) {
     entry.nobleNeed = focused(initial).filter(n => n.cost[entry.color] > own.discounts[entry.color]).length;
   }

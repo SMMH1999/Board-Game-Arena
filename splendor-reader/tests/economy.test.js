@@ -153,3 +153,15 @@ test("unknown deck tops are excluded and a preferred color adds weight", () => {
   assert.equal(result.race.colorEconomy.find(entry => entry.color === "E").weight, 0.5);
   assert.deepEqual(result.race.recommendedColors, []);
 });
+
+test("target three nobles in four-player games and two in two- and three-player games", () => {
+  for (const count of [2,3,4]) {
+    const s = state({ cards: [], nobles: [
+      noble("a",{C:3,S:3,E:3}), noble("b",{S:3,R:3,O:3}),
+      noble("c",{C:3,R:3,O:3}), noble("d",{C:4,S:4})
+    ] });
+    const others = Array.from({length:count-1},(_,i)=>({id:"r"+i}));
+    const result = advice(s,others);
+    assert.equal(result.race.focusedNobles.length, count === 4 ? 3 : 2);
+  }
+});
