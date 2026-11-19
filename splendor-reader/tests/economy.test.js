@@ -171,3 +171,30 @@ test("a rival crossing either phase threshold changes our phase immediately", ()
     assert.equal(advice(state(), [{id:"leader",score}]).race.phase, phase);
   }
 });
+
+test("a reachable contested tier-three prize can be protected before five points", () => {
+  const prize = card("prize", "E", 5, { S:7, E:3 });
+  const s = state({ cards:[prize], discounts:{...zero,S:4,E:3}, tokens:{...zero,S:2} });
+  const result = advice(s,[{id:"other",discounts:{...zero,S:7,E:3},reservedCount:0}]);
+  assert.equal(result.race.phase, "build");
+  assert.equal(result.primary, "reserve");
+});
+
+test("in conversion a payable tier-three reserve is cashed before a small purchase", () => {
+  const s = state({ score:6, reserveCount:1, discounts:{...zero,S:4},
+    cards:[card("small","C",1,{S:4}),card("protected","O",4,{S:7},true)],
+    tokens:{...zero,S:3} });
+  const result = advice(s);
+  assert.equal(result.primary, "buy");
+  assert.equal(result.buy.id, "protected");
+});
+
+test("at equal cost and noble need the repeated market bonus breaks the tie", () => {
+  for (const bonus of ["S", "C"]) {
+    const s = state({ cards: [card("white","C",0,{}), card("blue","S",0,{}),
+      card("later",bonus,0,{O:7})], nobles: [noble("goal",{C:3,S:3,E:3})] });
+    const result = advice(s);
+    assert.equal(result.primary, "buy");
+    assert.equal(result.buy.id, bonus === "S" ? "blue" : "white");
+  }
+});

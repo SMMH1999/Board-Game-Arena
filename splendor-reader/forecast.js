@@ -102,7 +102,20 @@ globalThis.predictSplendorRivals = (snapshot, events, rules) => {
     for (const move of moveOptions(state)) {
       const card = cards.find(item => item.id === move.id);
       let score = (move.state.score - player.score) * 2;
-      if (move.kind === "buy") score += 2 + (card.reserved ? 0.4 : 0);
+      if (move.kind === "buy") {
+        const nobleProgress = game.nobles.reduce((best, noble) => {
+          if (!(noble.cost[card.bonus] > player.discounts[card.bonus])) return best;
+          const remaining = Object.entries(noble.cost).reduce((sum, [color, cost]) =>
+            sum + Math.max(0, cost - move.state.discounts[color]), 0);
+          return Math.max(best, remaining ? noble.points / (1 + remaining) : 0);
+        }, 0);
+        const nextPurchase = cards.reduce((best, target) => {
+          if (target.id === card.id || !(target.cost[card.bonus] > player.discounts[card.bonus])) return best;
+          const value = (target.points + 1) * (target.reserved ? 1 : 0.45) / (1 + gap(target, move.state));
+          return Math.max(best, value);
+        }, 0);
+        score += 2 + nobleProgress + nextPurchase + (card.reserved ? 0.4 : 0);
+      }
       if (move.kind === "reserve") {
         score += (card.points + 1) / (2 + gap(card, move.state)) + (move.gold ? 0.55 : 0) +
           Math.min(0.6, reserveHabit * 0.15);
