@@ -1,6 +1,8 @@
 globalThis.createSplendorReserveTracker = () => {
   let baseline;
   let latest;
+  const identified = new Map();
+  const purchased = discounts => Object.values(discounts ?? {}).reduce((sum, count) => sum + count, 0);
 
   function observe(snapshot) {
     const { gameState, move, localPlayerId, turnText } = snapshot;
@@ -9,7 +11,12 @@ globalThis.createSplendorReserveTracker = () => {
     }
     if (latest && move !== latest.move) baseline = latest;
     const consecutive = baseline?.move === move - 1;
-    const records = consecutive ? baseline.records.slice() : [];
+    const records = (baseline?.records ?? []).filter(record => {
+      if (consecutive) return true;
+      const player = gameState.players.find(item => item.id === record.playerId);
+      return Number.isInteger(player?.reservedCount) && player.reservedCount >= baseline.counts[player.id] &&
+        purchased(player.discounts) === purchased(baseline.discounts[player.id]);
+    });
     if (consecutive) {
       const market = gameState.cards.filter(card => !card.reserved);
       const before = baseline.market;
@@ -24,6 +31,10 @@ globalThis.createSplendorReserveTracker = () => {
             gone.length === 1 && (added.length === 0 || added.length === 1 && added[0].level === gone[0].level)) {
           // The card was identified while face up in the public market.
           records.push({ playerId: rival.id, card: gone[0], move });
+          identified.set(actor.id, gone[0].id);
+        }
+        if (actor.action === "buys" && actor.source === "market" && gone.length === 1) {
+          identified.set(actor.id, gone[0].id);
         }
         if (actor.action === "buys" && actor.source === "reserve" && rival.reservedCount === oldCount - 1) {
           const color = actor.icons.find(icon => icon.kind === "card")?.color;
@@ -42,6 +53,9 @@ globalThis.createSplendorReserveTracker = () => {
             }
             return goldDue === payment.filter(icon => icon.color === "G").length;
           });
+          if (possible.length === 1 && records.filter(record => record.playerId === rival.id).length === oldCount) {
+            identified.set(actor.id, possible[0].card.id);
+          }
           for (const record of possible) records.splice(records.indexOf(record), 1);
         }
       }
@@ -60,5 +74,5 @@ globalThis.createSplendorReserveTracker = () => {
     return records;
   }
 
-  return { observe };
+  return { observe, cardId: event => identified.get(event.id) };
 };

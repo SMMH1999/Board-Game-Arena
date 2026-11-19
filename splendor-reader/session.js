@@ -3,6 +3,7 @@ globalThis.createSplendorArchive = (session) => {
   const timeline = [];
   const actions = new Map();
   const cards = new Map();
+  const rivalPredictions = new Map();
   const decisions = new Map();
   const strategyProfiles = new Map();
   let localPlayerId;
@@ -20,13 +21,19 @@ globalThis.createSplendorArchive = (session) => {
     const game = snapshot.gameState;
     if (!game) return;
     for (const event of game.events) {
-      if (!event.id || actions.has(event.id)) continue;
+      if (!event.id || (actions.has(event.id) && (!event.cardId || actions.get(event.id).cardId === event.cardId))) continue;
       actions.set(event.id, event);
       revision++;
     }
 
     const finished = /game (?:is )?over|game has ended|end of (?:the )?game/i.test(snapshot.turnText ?? "");
     if (!finished && !/must play|your turn/i.test(snapshot.turnText ?? "")) return;
+
+    const prediction = snapshot.rivalForecasts?.find(item => item.playerId === snapshot.activePlayerId);
+    if (!finished && prediction && Number.isInteger(snapshot.move) && !rivalPredictions.has(snapshot.move)) {
+      rivalPredictions.set(snapshot.move, { ...prediction, move: snapshot.move });
+      revision++;
+    }
 
     for (const { id, level, bonus, points, cost } of game.cards) {
       if (!cards.has(id) || (level && !cards.get(id).level)) {
@@ -144,10 +151,23 @@ globalThis.createSplendorArchive = (session) => {
     const strategiesUsed = [...new Set(recordedDecisions
       .filter(decision => decision.primary && decision.strategyId)
       .map(decision => decision.strategyId))];
+    const actualActions = [...actions.values()];
+    const rivalForecasts = [...rivalPredictions.values()].map(prediction => {
+      const events = actualActions.filter(event => event.playerId === prediction.playerId && event.move === prediction.move + 1);
+      const actual = events.find(event => ["buys", "reserves"].includes(event.action)) ??
+        events.find(event => event.action === "gets" && event.icons.some(icon => icon.kind === "token" && icon.color !== "G"));
+      if (!actual) return { ...prediction, actual: null, matched: null };
+      const kind = { buys: "buy", reserves: "reserve", gets: "take" }[actual.action];
+      const drawn = actual.icons.filter(icon => icon.kind === "token").map(icon => icon.color);
+      const matched = kind !== prediction.kind ? false : kind === "take"
+        ? [...drawn].sort().join() === [...prediction.tokens].sort().join()
+        : actual.cardId ? actual.cardId === prediction.cardId : null;
+      return { ...prediction, actual: { eventId: actual.id, kind, cardId: actual.cardId ?? null }, matched };
+    });
     const data = {
       schemaVersion: 4, session, localPlayerId, extensionVersion, strategiesUsed,
       strategyProfiles: Object.fromEntries(strategyProfiles),
-      timeline, decisions: recordedDecisions, cards: Object.fromEntries(cards),
+      timeline, rivalForecasts, decisions: recordedDecisions, cards: Object.fromEntries(cards),
       actions: [...actions.values()].sort((a, b) => a.move - b.move ||
         a.id.localeCompare(b.id, undefined, { numeric: true })),
       result: gameResult()

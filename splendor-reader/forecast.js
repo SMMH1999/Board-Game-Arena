@@ -71,3 +71,56 @@ globalThis.forecastSplendorRound = ({ rivals, previousOrder, cards, bank, holdin
   }).sort((a, b) => b.score - a.score);
   return { depth: order.length, paths };
 };
+
+// Public-information forecasts for the current board. The scores rank moves without claiming probabilities.
+globalThis.predictSplendorRivals = (snapshot, events, rules) => {
+  const game = snapshot.gameState;
+  if (!game || !rules || !snapshot.localPlayerId) return [];
+  const colors = ["C", "S", "E", "R", "O", "G"];
+  const bank = Object.fromEntries(colors.map(color => {
+    const counter = snapshot.counters.find(item => item.elementId === "coincounter_" + color);
+    return [color, /^\d+$/.test(counter?.text ?? "") ? Number(counter.text) : null];
+  }));
+  if (Object.values(bank).some(value => value === null)) return [];
+
+  const { moveOptions } = splendorClassic.transitions(rules);
+  const payment = splendorClassic.payment;
+  return game.players.flatMap(player => {
+    if (player.id === snapshot.localPlayerId || !Number.isInteger(player.score) ||
+        !colors.every(color => Number.isInteger(player.tokens?.[color]) &&
+          (color === "G" || Number.isInteger(player.discounts?.[color])))) return [];
+    const history = events.filter(event => event.playerId === player.id).slice(-24);
+    const cards = [...game.cards.filter(card => !card.reserved),
+      ...snapshot.publicRivalReserves.filter(record => record.playerId === player.id)
+        .map(record => ({ ...record.card, reserved: true }))];
+    const state = { ...player, cards, bank, nobles: game.nobles, decks: {}, buying: 0, cardPoints: 0,
+      reserveCount: player.reservedCount ?? rules.reservation_limit };
+    const gap = (card, position) => Math.max(0, payment(card, position).G - position.tokens.G);
+    const reserveHabit = history.filter(event => event.action === "reserves").length;
+    let best;
+    let bestScore = -Infinity;
+    for (const move of moveOptions(state)) {
+      const card = cards.find(item => item.id === move.id);
+      let score = (move.state.score - player.score) * 2;
+      if (move.kind === "buy") score += 2 + (card.reserved ? 0.4 : 0);
+      if (move.kind === "reserve") {
+        score += (card.points + 1) / (2 + gap(card, move.state)) + (move.gold ? 0.55 : 0) +
+          Math.min(0.6, reserveHabit * 0.15);
+      }
+      if (move.kind === "take") {
+        score += Math.max(0, ...cards.map(goal =>
+          (gap(goal, state) - gap(goal, move.state)) * (1 + goal.points * 0.22) / (1 + gap(goal, move.state))));
+        score += move.tokens.reduce((sum, color) => sum + history.filter(event => event.action === "gets" &&
+          event.icons.some(icon => icon.kind === "token" && icon.color === color)).length * 0.025, 0);
+        score -= move.returned.length * 0.25;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = { playerId: player.id, kind: move.kind, cardId: card?.id ?? null,
+          source: card?.reserved ? "reserve" : card ? "market" : null,
+          tokens: move.kind === "take" ? move.tokens : [], points: move.state.score - player.score };
+      }
+    }
+    return best ? [best] : [];
+  });
+};

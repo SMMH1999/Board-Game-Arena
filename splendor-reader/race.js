@@ -97,8 +97,9 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
 
   const demand = new Map(cards.map(card => [card.id, rivals.reduce((sum, rival) => {
     if (!validStock(rival) || card.reserved) return sum;
+    const predicted = snapshot.rivalForecasts?.some(move => move.playerId === rival.id && move.cardId === card.id && move.source === "market");
     const gap = Math.max(0, payment(card, rival).G - rival.tokens.G);
-    return sum + (gap === 0 ? 1 : rival.reservedCount !== 3 ? 1 / (1 + gap) : 0);
+    return sum + (predicted ? 0.5 : 0) + (gap === 0 ? 1 : rival.reservedCount !== 3 ? 1 / (1 + gap) : 0);
   }, 0)]));
   function protection(move) {
     if (move.kind !== "reserve") return 0;

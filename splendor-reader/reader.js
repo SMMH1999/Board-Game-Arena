@@ -14,6 +14,7 @@
   let firstPlayerId;
   let roundOrder;
   let reserveTracker;
+  let rivalForecasts = [];
   const observedActions = new Map();
   const guide = createSplendorGuide();
 
@@ -42,6 +43,7 @@
       archive?.flush(true);
       tableUrl = location.href;
       observedActions.clear();
+      rivalForecasts = [];
       turnOrder = [];
       firstPlayerId = undefined;
       roundOrder = undefined;
@@ -102,16 +104,25 @@
     for (const event of snapshot.gameLog) observedActions.set(event.id, event);
     snapshot.rivalEvents = [...observedActions.values()].sort((a, b) => a.move - b.move).slice(-36);
     snapshot.publicRivalReserves = reserveTracker.observe(snapshot);
+    for (const event of snapshot.gameLog) {
+      const cardId = reserveTracker.cardId(event);
+      if (cardId) observedActions.set(event.id, { ...event, cardId });
+    }
+    snapshot.gameState.events = snapshot.gameLog.map(event => observedActions.get(event.id));
     const { capturedAt, ...state } = snapshot;
     const signature = JSON.stringify(state, (key, value) => key === "x" || key === "y" ? undefined : value);
     let finalCheckpoint = false;
     if (signature !== previousSignature) {
+      rivalForecasts = /game over|game has ended|end of (?:the )?game/i.test(snapshot.turnText ?? "")
+        ? [] : predictSplendorRivals(snapshot, [...observedActions.values()], globalThis.splendorActiveStrategy?.rules);
+      snapshot.rivalForecasts = rivalForecasts;
       journal.observe(snapshot);
       finalCheckpoint = archive.observe(snapshot) === true;
       history.push(snapshot);
       if (history.length > 150) history.shift();
       previousSignature = signature;
     }
+    snapshot.rivalForecasts = rivalForecasts;
     archive.flush(finalCheckpoint);
     renderOverlay(snapshot);
     return snapshot;
@@ -203,6 +214,13 @@
       overlay.message.textContent = snapshot.activePlayerName
         ? `نوبت ${snapshot.activePlayerName} است.`
         : "ثبت فعال است؛ منتظر تشخیص نوبت شما.";
+      const prediction = snapshot.rivalForecasts?.find(item => item.playerId === snapshot.activePlayerId);
+      if (prediction) {
+        const actions = { buy: "خرید", reserve: "رزرو", take: "برداشت ژتون" };
+        const names = { C: "سفید", S: "آبی", E: "سبز", R: "قرمز", O: "سیاه" };
+        const detail = prediction.cardId ? `کارت ${prediction.cardId}` : prediction.tokens.map(color => names[color]).join("، ");
+        overlay.message.textContent += ` حرکت محتمل · ${actions[prediction.kind]} ${detail}`;
+      }
       return;
     }
   }
