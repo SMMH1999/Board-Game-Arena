@@ -175,6 +175,9 @@ globalThis.createSplendorGuide = () => {
           details.push(`تا نوبل هدف: ${needs.join("، ")} کارت تخفیف`);
         }
         if (advice.race.removedTarget) details.push("حریف کارت هدف قبلی را رزرو کرد؛ مسیر دوباره محاسبه شد");
+        if (advice.race.immediatePoints > 0 && !advice.race.finishing) {
+          details.push(`امتیاز همین نوبت: +${advice.race.immediatePoints}`);
+        }
         if (advice.race.finishing) details.push(`امتیاز پس از خرید: ${advice.race.ownNextScore}`);
         if (advice.race.hiddenThreat?.length) details.push("رزرو پنهان حریف می‌تواند پایان را جلو بیندازد");
         if (advice.race.rivalThreat >= 15) details.push(`تهدید قابل‌مشاهدهٔ حریف: ${advice.race.rivalThreat}`);

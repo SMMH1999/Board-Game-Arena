@@ -256,16 +256,19 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     }).sort((a, b) => b.score - a.score || Number(b.id === preferredTarget) - Number(a.id === preferredTarget));
   }
 
-  function endValue(state, depth) {
+  function finishAtRisk(state) {
     // A projected final score can be challenged by the rivals with turns still to play.
     const ourCount = developmentCount(state);
     const threats = rivals.map(rival => finishRivals.includes(rival) ? rivalCeiling(rival, state) : {
       score: rival.score ?? 0,
       cards: validStock(rival) ? developmentCount(rival) : null
     });
-    const beaten = threats.some(rival => rival.score > state.score ||
+    return threats.some(rival => rival.score > state.score ||
       (rival.score === state.score && (rival.cards === null || rival.cards <= ourCount)));
-    return (beaten ? 8 : 36) - depth * 3 + (state.score - target) * 0.8;
+  }
+
+  function endValue(state, depth) {
+    return (finishAtRisk(state) ? 8 : 36) - depth * 3 + (state.score - target) * 0.8;
   }
 
   function evaluate(move, depth) {
@@ -326,6 +329,13 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
       : 0;
     return { ...root, followup, score: best + 0.26 * root.value + fullBankAdjustment + earlyPurchase };
   }
+  function roundPriority(state) {
+    const visibleEnd = rivalStartsEnd || state.score >= 15 ||
+      (orderKnown && finishRivals.some(rival => rivalCeiling(rival, state).score >= 15));
+    if (!visibleEnd) return 1;
+    return finishAtRisk(state) ? 0 : 2;
+  }
+
   const moves = candidates.map(root => {
     const line = bestContinuation(root);
     const risk = line.followup && contested.has(line.followup) &&
@@ -335,7 +345,10 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     return { ...line, fallback: alternative.followup,
       score: line.score - Math.max(0, line.score - alternative.score) * 0.65 };
   }).filter(move => move.kind !== "reserve" || move.followup === move.id)
-    .sort((a, b) => b.score - a.score);
+    .map(move => ({ ...move, roundPriority: roundPriority(move.state),
+      immediatePoints: move.state.score - own.score }))
+    // In the same end-of-round outlook, take points now. Use strategy to break ties.
+    .sort((a, b) => b.roundPriority - a.roundPriority || b.immediatePoints - a.immediatePoints || b.score - a.score);
   const coverageOrder = noblePriorities(initial);
   const strategicOrder = coverageOrder.filter(priority => priority.neededFor > 0)
     .sort((a, b) => b.threeColorNeededFor - a.threeColorNeededFor || b.neededFor - a.neededFor ||
@@ -364,7 +377,8 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
   let top = moves[0];
   if (opening && top?.kind === "take" && strategicOrder.length) {
     const openingTolerance = 0.08;
-    const tied = moves.filter(move => move.kind === "take" && top.score - move.score <= openingTolerance)
+    const tied = moves.filter(move => move.kind === "take" && move.roundPriority === top.roundPriority &&
+      top.score - move.score <= openingTolerance)
       .map(move => ({ move, target: openingOptions(move.state)[0] }));
     tied.sort((a, b) => (a.target?.turns ?? 3) - (b.target?.turns ?? 3) ||
       (a.target?.rank ?? colors.length) - (b.target?.rank ?? colors.length) ||
@@ -408,5 +422,5 @@ globalThis.splendorRaceAdvice = (snapshot, preferredTarget = null, deferredBuy =
     race: { target, rivalThreat, orderKnown, nobleTarget, discountPriorities, discountGroups,
       removedTarget: publicReserves.find(record => record.card.id === preferredTarget)?.card.id ?? null,
       hiddenThreat: hiddenThreat.map(rival => rival.id), finishing: Boolean(top && top.state.score >= 15),
-      ownNextScore: top?.state.score ?? own.score } };
+      immediatePoints: top?.immediatePoints ?? 0, ownNextScore: top?.state.score ?? own.score } };
 };

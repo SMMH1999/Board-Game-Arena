@@ -95,3 +95,51 @@ test("an opening without a noble path keeps two reachable purchase options", () 
   assert.equal(advice.paths.length, 2);
   assert.deepEqual(advice.race.discountGroups, []);
 });
+
+test("bank the points on an affordable reserve before preparing another purchase", () => {
+  const advice = makeAdvice({
+    own: player("own", 4, { C: 2 }, { O: 1 }, 1),
+    rivals: [player("rival", 7)],
+    cards: [
+      { ...card("card_72", 3, "C", 4, { C: 2, O: 1 }), reserved: true },
+      card("card_9", 1, "O", 0, { O: 1 }),
+      card("card_76", 3, "S", 5, { E: 4 })
+    ]
+  });
+
+  assert.equal(advice.primary, "buy");
+  assert.equal(advice.buy.id, "card_72");
+  assert.equal(advice.race.immediatePoints, 4);
+});
+
+test("an affordable card counts the noble points it claims in the same turn", () => {
+  const advice = makeAdvice({
+    own: player("own", 8, { C: 2 }, { O: 3, C: 4 }, 1),
+    rivals: [player("rival", 8)],
+    nobles: [noble("noble_4", { C: 4, O: 4 })],
+    cards: [
+      { ...card("card_65", 2, "O", 1, { C: 5 }), reserved: true },
+      card("card_17", 1, "E", 3, { C: 6 })
+    ]
+  });
+
+  assert.equal(advice.primary, "buy");
+  assert.equal(advice.buy.id, "card_65");
+  assert.equal(advice.race.immediatePoints, 4);
+});
+
+test("take fewer immediate points if the purchase blocks an opponent's projected winning finish", () => {
+  const advice = makeAdvice({
+    own: player("own", 11, { C: 1, O: 1 }),
+    rivals: [player("rival", 13, { O: 1 })],
+    roundOrder: ["own", "rival"],
+    cards: [
+      card("card_76", 3, "C", 5, { C: 1 }),
+      card("card_72", 3, "O", 4, { O: 1 })
+    ]
+  });
+
+  assert.equal(advice.primary, "buy");
+  assert.equal(advice.buy.id, "card_72");
+  assert.equal(advice.race.ownNextScore, 15);
+});

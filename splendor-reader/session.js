@@ -66,6 +66,7 @@ globalThis.createSplendorArchive = (session) => {
       discountPriorities: advice.race?.discountPriorities ?? [],
       discountGroups: advice.race?.discountGroups ?? [],
       nobleTarget: advice.race?.nobleTarget?.id ?? null,
+      immediatePoints: advice.race?.immediatePoints ?? null,
       threat: advice.race ? { visible: advice.race.rivalThreat, hidden: advice.race.hiddenThreat ?? [],
         orderKnown: advice.race.orderKnown, removedTarget: advice.race.removedTarget ?? null } : null
     };
