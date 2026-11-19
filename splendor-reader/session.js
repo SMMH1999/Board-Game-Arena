@@ -79,6 +79,7 @@ globalThis.createSplendorArchive = (session) => {
       move: snapshot.move, primary: advice.primary, strategyId: advice.strategyId ?? null,
       ...(profileKey ? { strategyProfile: profileKey } : {}),
       preferredColors: advice.preferredColors ?? [],
+      phase: advice.race?.phase ?? null,
       colorEconomy: advice.race?.colorEconomy ?? [],
       focusedNobles: advice.race?.focusedNobles ?? [],
       nobleClaim: choice?.nobleId ?? null, projectedWinTurn: advice.race?.projectedWinTurn ?? null,

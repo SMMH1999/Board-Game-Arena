@@ -165,3 +165,9 @@ test("target three nobles in four-player games and two in two- and three-player 
     assert.equal(result.race.focusedNobles.length, count === 4 ? 3 : 2);
   }
 });
+
+test("a rival crossing either phase threshold changes our phase immediately", () => {
+  for (const [score, phase] of [[4,"build"],[5,"convert"],[9,"convert"],[10,"finish"],[15,"finish"]]) {
+    assert.equal(advice(state(), [{id:"leader",score}]).race.phase, phase);
+  }
+});
